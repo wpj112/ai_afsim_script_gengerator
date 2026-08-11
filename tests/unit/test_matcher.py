@@ -1,4 +1,11 @@
+import json
+from pathlib import Path
+
 from core.matcher import match_output
+
+REAL_RULES = json.loads(
+    (Path(__file__).resolve().parent.parent.parent / "memory" / "error_rules.json").read_text(encoding="utf-8")
+)
 
 RULES = {"rules": [{"id": "E001", "keywords": ["Unknown command: platform_type"],
                     "patterns": ["Unknown command:\\s+(\\S+)"], "fix": {"type": "template"},
@@ -34,3 +41,13 @@ def test_stdout_stderr_line_numbers():
                         "patterns": [], "fix": {"type": "template"}, "lessons": []}]}
     out = "stdout line 1\nstdout line 2\nERROR: Unknown command: platform_type"
     assert match_output(out, "stderr only", rules)[0].line_no == 3
+
+def test_unknown_error_with_platform_instances_not_matched_as_e019():
+    res = match_output("echo: configuring platform instances", "unrelated failure", REAL_RULES)
+    assert res == []
+
+def test_unknown_weapon_still_matches_real_rules():
+    res = match_output("", "ERROR: Unknown weapon: foo_missile", REAL_RULES)
+    assert res
+    assert res[0].rule_id == "E017"
+    assert res[0].confidence == "pattern"

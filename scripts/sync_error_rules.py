@@ -11,6 +11,13 @@ FIX_TYPE_MAP = {
 }
 DEFAULT_FIX_TYPE = "llm_guided"
 
+ENTRY_OVERRIDES = {
+    "E019": {
+        "keywords": [],
+        "patterns": [r"Unknown weapon:\s+(\S+)"],
+    },
+}
+
 
 def _parse_entries(text: str) -> list[dict]:
     entries = []
@@ -32,6 +39,7 @@ def _parse_entries(text: str) -> list[dict]:
             "demo": demo.group(1).strip().replace("`", "").strip() if demo else "",
             "lessons": [],
         })
+        entries[-1].update(ENTRY_OVERRIDES.get(rid, {}))
     return entries
 
 
