@@ -30,6 +30,7 @@ class TaskManager:
         self.rules = rules if rules is not None else self._load_default_rules()
         self._cache = {}
         self._cancel = set()
+        self._state_lock = threading.Lock()
         self._db_lock = threading.Lock()
         self._init_db()
         self._executor = ThreadPoolExecutor(max_workers=self.config.concurrency)
@@ -62,20 +63,20 @@ class TaskManager:
     def _run(self, task_id, request, workdir):
         self._set_state(task_id, "running")
         result = run_task(request, self.config, self.llm, self.rules, workdir, task_id)
-        if task_id in self._cancel:
-            self._set_state(task_id, "cancelled")
-            return
         self._set_state(task_id, result.status, retries=[asdict(r) for r in result.retries], result=result.report)
 
     def _set_state(self, task_id, state, retries=None, result=None):
-        status = self._cache.get(task_id)
-        if status is None:
-            return
-        status.state = state
-        if retries is not None:
-            status.retries = retries
-        if result is not None:
-            status.result = result
+        with self._state_lock:
+            if task_id in self._cancel:
+                state = "cancelled"
+            status = self._cache.get(task_id)
+            if status is None:
+                return
+            status.state = state
+            if retries is not None:
+                status.retries = retries
+            if result is not None:
+                status.result = result
         self._persist(task_id, status, status.created_at)
 
     def _persist(self, task_id, status, created_at):
@@ -105,9 +106,10 @@ class TaskManager:
         return status
 
     def cancel(self, task_id):
-        status = self._cache.get(task_id)
-        if status is None or status.state in ("success", "failed", "needs_review", "cancelled"):
-            return False
-        self._cancel.add(task_id)
+        with self._state_lock:
+            status = self._cache.get(task_id)
+            if status is None or status.state in ("success", "failed", "needs_review", "cancelled"):
+                return False
+            self._cancel.add(task_id)
         self._set_state(task_id, "cancelled")
         return True

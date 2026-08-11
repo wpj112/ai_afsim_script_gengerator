@@ -37,7 +37,7 @@ def test_submit_two_tasks_isolated_workdirs_and_persistence(tmp_path, monkeypatc
         seen[task_id] = workdir
         Path(workdir).mkdir(parents=True, exist_ok=True)
         (Path(workdir) / "scenario.txt").write_text(request.script or "")
-        if len(seen) == 1:
+        if request.script == "a\n":
             return TaskResult(
                 "success",
                 [RetryRecord(1, 1, "boom", "E001", "diff-line")],
