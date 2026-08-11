@@ -105,7 +105,8 @@ def _print_report(task_id, status):
         for r in status.retries:
             print(
                 f"  attempt {r.get('attempt')}: rc={r.get('rc')} "
-                f"rule={r.get('matched_rule')} stderr={r.get('stderr', '')[:200]}"
+                f"rule={r.get('matched_rule')} stdout={r.get('stdout', '')[:120]} "
+                f"stderr={r.get('stderr', '')[:120]}"
             )
     if status.result:
         print(f"final: {status.result}")

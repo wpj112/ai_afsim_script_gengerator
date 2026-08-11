@@ -68,5 +68,5 @@ def test_two_concurrent_script_tasks_isolated_workdirs_and_report(tmp_path):
     assert str((workspaces / id1).resolve()) != str((workspaces / id2).resolve())
     assert (workspaces / id1 / "scenario.txt").exists()
     assert (workspaces / id2 / "scenario.txt").exists()
-    assert (workspaces / id1 / "scenario.txt").read_text(encoding="utf-8") == script_a
-    assert (workspaces / id2 / "scenario.txt").read_text(encoding="utf-8") == script_b
+    assert (workspaces / id1 / "scenario.txt").read_text(encoding="utf-8") == script_a + "end_time 7200 sec\n"
+    assert (workspaces / id2 / "scenario.txt").read_text(encoding="utf-8") == script_b + "end_time 7200 sec\n"

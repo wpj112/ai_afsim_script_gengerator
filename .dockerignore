@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+.superpowers
+__pycache__
+*.pyc
+workspaces
+memory/hot
+output
+runner_workspaces

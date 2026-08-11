@@ -3,7 +3,7 @@
 # AFSIM Installation Directory
 # This is the root directory where AFSIM is installed
 # All other paths are derived from this base directory
-AFSIM_INSTALL_DIR=D:\Program Files\afsim2.9.0
+AFSIM_INSTALL_DIR=/opt/afsim
 
 # Documentation Directory (derived from install dir)
 # This is the ultimate reference for detailed information
@@ -15,19 +15,30 @@ AFSIM_INSTALL_DIR=D:\Program Files\afsim2.9.0
 # MISSION_EXE=${AFSIM_INSTALL_DIR}/bin/mission.exe
 
 # Notes:
-# - Change AFSIM_INSTALL_DIR to match your installation
-# - Documentation and mission.exe paths are automatically derived
-# - On different computers, only update AFSIM_INSTALL_DIR
+# - Change AFSIM_INSTALL_DIR to match your installation for local execution
+# - MISSION_EXE is optional; when empty it is derived from AFSIM_INSTALL_DIR
+# - Linux local default: {AFSIM_INSTALL_DIR}/bin/mission
+# - Windows local default: {AFSIM_INSTALL_DIR}/bin/mission.exe
+
+# Executor
+# local: run mission on this machine
+# remote: send scripts to a Windows/Linux AFSIM runner service
+EXECUTOR_MODE=local
+MISSION_EXE=/opt/afsim/bin/mission
+AFSIM_RUNNER_URL=
 
 # Concurrency / Retry
 CONCURRENCY=4
-MAX_RETRIES=3
+MAX_RETRIES=10
+DEFAULT_END_TIME_SEC=7200
+DEFAULT_ROUTE_SPEED=450 kts
 
 # LLM Configuration
 # Override via environment variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
 LLM_BASE_URL=http://localhost:11434/v1
 LLM_API_KEY=
 LLM_MODEL=
+LLM_TIMEOUT=300
 
 # Workspaces and Database
 WORKSPACES_DIR=workspaces

@@ -1,0 +1,36 @@
+services:
+  afsim-gen:
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    image: afsim-script-generator:local
+    container_name: afsim-gen
+    restart: unless-stopped
+    ports:
+      - "${AFSIM_GEN_PORT:-18006}:8000"
+    environment:
+      EXECUTOR_MODE: ${EXECUTOR_MODE:-local}
+      AFSIM_RUNNER_URL: ${AFSIM_RUNNER_URL:-}
+      AFSIM_INSTALL_DIR: ${AFSIM_INSTALL_DIR:-/opt/afsim}
+      MISSION_EXE: ${MISSION_EXE:-/opt/afsim/bin/mission}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-300}
+      MAX_RETRIES: ${MAX_RETRIES:-10}
+      DEFAULT_END_TIME_SEC: ${DEFAULT_END_TIME_SEC:-7200}
+      DEFAULT_ROUTE_SPEED: ${DEFAULT_ROUTE_SPEED:-450 kts}
+    volumes:
+      - ./config.txt:/app/config.txt:ro
+      - ./workspaces:/app/workspaces
+      - ./memory:/app/memory
+      - ./output:/app/output
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

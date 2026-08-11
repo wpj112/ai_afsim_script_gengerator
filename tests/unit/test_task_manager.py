@@ -40,7 +40,7 @@ def test_submit_two_tasks_isolated_workdirs_and_persistence(tmp_path, monkeypatc
         if request.script == "a\n":
             return TaskResult(
                 "success",
-                [RetryRecord(1, 1, "boom", "E001", "diff-line")],
+                [RetryRecord(1, 1, "out", "boom", "E001", "diff-line")],
                 None,
                 {"message": "mission loaded OK"},
             )
@@ -56,7 +56,7 @@ def test_submit_two_tasks_isolated_workdirs_and_persistence(tmp_path, monkeypatc
     assert s1.state == "success"
     assert s2.state == "failed"
     assert s1.retries == [
-        {"attempt": 1, "rc": 1, "stderr": "boom", "matched_rule": "E001", "diff": "diff-line"}
+        {"attempt": 1, "rc": 1, "stdout": "out", "stderr": "boom", "matched_rule": "E001", "diff": "diff-line"}
     ]
     assert len(seen) == 2
     workdirs = list(seen.values())
@@ -69,6 +69,42 @@ def test_submit_two_tasks_isolated_workdirs_and_persistence(tmp_path, monkeypatc
     conn.close()
     assert len(rows) == 2
     assert {r[1] for r in rows} == {"success", "failed"}
+
+
+def test_prompt_history_records_prompt_tasks_only(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    prompt_id = manager.submit(TaskRequest(prompt="生成空战场景", options=["-es"]))
+    manager.submit(TaskRequest(script="end_time 1 sec\n", options=["-es"]))
+    _wait_terminal(manager, prompt_id)
+
+    history = manager.list_prompt_history()
+    assert len(history) == 1
+    assert history[0].task_id == prompt_id
+    assert history[0].prompt == "生成空战场景"
+    assert history[0].options == ["-es"]
+    assert history[0].state == "success"
+
+
+def test_prompt_history_persists_after_restart(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    task_id = manager.submit(TaskRequest(prompt="巡逻场景", options=[]))
+    _wait_terminal(manager, task_id)
+
+    restarted = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    history = restarted.list_prompt_history()
+    assert [(item.task_id, item.prompt) for item in history] == [(task_id, "巡逻场景")]
 
 
 def test_cancel_marks_task_cancelled(tmp_path, monkeypatch):

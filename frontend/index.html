@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AFSIM Agent</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>AFSIM Agent</h1>
+          <p id="healthText">checking</p>
+        </div>
+        <div class="top-actions">
+          <button id="refreshHistory" type="button">刷新历史</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <div class="submit-panel">
+          <div class="tabs" role="tablist" aria-label="提交类型">
+            <button class="tab active" id="promptTab" type="button">Prompt</button>
+            <button class="tab" id="scriptTab" type="button">Script</button>
+          </div>
+
+          <form id="taskForm">
+            <label for="promptInput" id="inputLabel">任务需求</label>
+            <textarea id="promptInput" spellcheck="false">生成一个带雷达和空空导弹的空战场景</textarea>
+            <div class="form-grid">
+              <label>
+                mission 选项
+                <input id="optionsInput" value="-es" />
+              </label>
+              <label>
+                查询任务
+                <input id="taskLookup" placeholder="task id" />
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="primary" type="submit">提交任务</button>
+              <button id="lookupTask" type="button">查询</button>
+              <button id="cancelTask" type="button">取消当前</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="status-panel">
+          <div class="panel-head">
+            <h2>任务状态</h2>
+            <span id="stateBadge" class="badge">idle</span>
+          </div>
+          <dl class="meta">
+            <div>
+              <dt>Task ID</dt>
+              <dd id="taskId">-</dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd id="createdAt">-</dd>
+            </div>
+          </dl>
+          <div class="flow" id="flowState" aria-label="当前执行流程">
+            <div class="flow-step waiting" data-step="submit">
+              <span>1</span>
+              <strong>提交</strong>
+              <em>等待任务</em>
+            </div>
+            <div class="flow-step waiting" data-step="generate">
+              <span>2</span>
+              <strong>生成脚本</strong>
+              <em>等待</em>
+            </div>
+            <div class="flow-step waiting" data-step="execute">
+              <span>3</span>
+              <strong>执行 mission</strong>
+              <em>等待</em>
+            </div>
+            <div class="flow-step waiting" data-step="fix">
+              <span>4</span>
+              <strong>匹配/修复</strong>
+              <em>等待</em>
+            </div>
+            <div class="flow-step waiting" data-step="done">
+              <span>5</span>
+              <strong>完成</strong>
+              <em>等待</em>
+            </div>
+          </div>
+          <pre id="resultBox" class="output">{}</pre>
+        </div>
+      </section>
+
+      <section class="detail-grid">
+        <div class="data-panel">
+          <div class="panel-head">
+            <h2>生成脚本</h2>
+            <div class="panel-actions">
+              <button id="runWarlock" type="button">Warlock</button>
+              <button id="copyScript" type="button">复制</button>
+              <button id="loadScript" type="button">读取</button>
+            </div>
+          </div>
+          <pre id="scriptBox" class="output script-output">暂无脚本</pre>
+        </div>
+
+        <div class="data-panel">
+          <div class="panel-head">
+            <h2>步骤详情</h2>
+            <span id="stepCount" class="muted">0</span>
+          </div>
+          <div id="stepsList" class="list empty">暂无步骤</div>
+        </div>
+      </section>
+
+      <section class="lower-grid">
+        <div class="data-panel">
+          <div class="panel-head">
+            <h2>Warlock 配置</h2>
+            <button id="saveWarlockConfig" type="button">保存</button>
+          </div>
+          <label>
+            启动 URL 模板
+            <input id="warlockTemplate" placeholder="warlock://open?script={script_url}" />
+          </label>
+          <p class="hint">可用变量：{script_url}、{task_id}</p>
+          <p id="actionStatus" class="hint">等待配置</p>
+        </div>
+
+        <div class="data-panel">
+          <div class="panel-head">
+            <h2>Prompt 历史</h2>
+            <span id="historyTotal" class="muted">-</span>
+          </div>
+          <div id="historyBox" class="list empty">暂无记录</div>
+        </div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

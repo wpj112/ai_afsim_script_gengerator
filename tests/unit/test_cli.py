@@ -22,7 +22,7 @@ class FakeManager:
             task_id,
             "success",
             "2024-01-01T00:00:00",
-            [{"attempt": 1, "rc": 1, "stderr": "boom", "matched_rule": "E001", "diff": "d"}],
+            [{"attempt": 1, "rc": 1, "stdout": "out", "stderr": "boom", "matched_rule": "E001", "diff": "d"}],
             {"message": "mission loaded OK"},
         )
 

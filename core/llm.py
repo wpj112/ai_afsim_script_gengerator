@@ -5,12 +5,28 @@ import httpx
 
 
 class LLMClient:
-    def __init__(self, base_url, api_key, model, transport=None):
+    def __init__(
+        self,
+        base_url,
+        api_key,
+        model,
+        transport=None,
+        timeout=300,
+        default_end_time_sec=7200,
+        default_route_speed="450 kts",
+    ):
         self.model = model
+        self.default_end_time_sec = default_end_time_sec
+        self.default_route_speed = default_route_speed
+        self.last_error = ""
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers=headers,
             transport=transport,
+            timeout=timeout,
         )
 
     def chat(self, messages, tools=None):
@@ -21,17 +37,35 @@ class LLMClient:
             resp = self._client.post("/chat/completions", json=payload)
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
+            self.last_error = ""
             return content if content is not None else ""
-        except Exception:
+        except Exception as exc:
+            self.last_error = str(exc)
             return ""
 
     def generate_script(self, prompt, knowledge_context):
         system = (
             "你是 AFSIM 脚本生成专家。严格遵循以下规则："
+            "只输出完整 AFSIM 脚本正文，不要输出 Markdown 代码围栏、解释、推理过程或空内容；"
+            "必须使用 AFSIM/WSF 文本块语法：块以关键字开头，以 end_关键字结束；"
+            "严禁使用 C/JSON 风格的大括号 `{}` 或方括号 `[]` 包裹 AFSIM 块；"
+            "平台实例使用 route/end_route 和 position ... altitude ... speed ...，不要使用 start_location；"
+            "仿真结束必须写成单行 `end_time <duration> sec`，禁止生成 `time ... end_time` 时间块；"
+            f"仿真结束时间至少为 `{self.default_end_time_sec} sec`；短于该值时必须写 `end_time {self.default_end_time_sec} sec`；"
+            f"`route` 必须采用官方 `navigation` 子块：`route -> navigation -> position ... -> speed {self.default_route_speed} -> end_navigation -> end_route`；"
+            "同一个 `route/navigation` 内相邻两个 `position` 的经纬度不能完全相同；"
+            "`script_interface` 内启用调试只能写 `debug`，不要写 `enable_debug`；"
+            "传感器类型必须使用完整 WSF 类型名，如 `sensor RADAR_NAME WSF_RADAR_SENSOR`，不要写 `sensor ... RADAR`；"
+            "当前 Linux AFSIM 镜像已验证的通用武器类型使用 `weapon NAME WSF_EXPLICIT_WEAPON`；不要写 `weapon ... missile`、`AA_MISSILE` 或 `WSF_AIR_TO_AIR_MISSILE`；"
+            "`antenna_pattern` 内必须写 `constant_pattern ... end_constant_pattern`，增益写 `peak_gain`，不要写裸 `gain` 或 `beamwidth`；"
+            "默认优先生成可加载骨架：`platform_type` 内只写 `mover WSF_AIR_MOVER ... end_mover`；不要用 `sensor NAME`、`weapon NAME`、`processor NAME` 这种外部引用行；"
+            "`platform` 实例内也不要用 `sensor NAME/end_sensor` 或 `weapon NAME/end_weapon` 这种挂载块；先只写 side 和 route；"
+            "优先生成最小可运行场景；不确定的传感器、武器、通信、气动参数直接省略，不要编造命令；"
             "1) 脚本文件必须以 .txt 扩展名保存；"
             "2) 速度、时间、高度、距离等参数必须带单位（如 kts、sec、ft msl）；"
             "3) 所有块必须以对应的 end_ 关键字闭合（如 end_platform_type、end_mover）；"
-            "4) 坐标使用 d:m:s N/S e/w 格式。"
+            "4) 坐标使用 d:m:s N/S e/w 格式；"
+            "5) 至少包含 end_time，且脚本不能为空。"
             "以下是与本次生成相关的知识上下文：\n" + knowledge_context
         )
         messages = [

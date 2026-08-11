@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from api.main import create_app
-from api.task_manager import TaskStatus
+from api.task_manager import PromptHistoryItem, TaskStatus
 from core.config import Config
 
 
@@ -33,6 +33,19 @@ class FakeTaskManager:
             status.state = "cancelled"
             return True
         return False
+
+    def list_prompt_history(self, limit=50):
+        return [
+            PromptHistoryItem(
+                task_id=task_id,
+                prompt=req.prompt,
+                options=req.options or [],
+                created_at=self.statuses[task_id].created_at,
+                state=self.statuses[task_id].state,
+            )
+            for task_id, req in zip(self.statuses, self.submitted)
+            if req.prompt
+        ][:limit]
 
 
 @pytest.fixture
@@ -74,6 +87,70 @@ def test_healthz(client):
     assert resp.json() == {"status": "ok"}
 
 
+def test_frontend_index_served(client):
+    test_client, _ = client
+    resp = test_client.get("/")
+    assert resp.status_code == 200
+    assert "AFSIM Agent" in resp.text
+    assert "生成脚本" in resp.text
+    assert "copyScript" in resp.text
+    assert "Warlock 配置" in resp.text
+    assert "步骤详情" in resp.text
+    assert "当前执行流程" in resp.text
+    assert "Prompt 历史" in resp.text
+
+
+def test_frontend_static_js_served(client):
+    test_client, _ = client
+    resp = test_client.get("/static/app.js")
+    assert resp.status_code == 200
+    assert "submitTask" in resp.text
+    assert "renderSteps" in resp.text
+    assert "renderFlow" in resp.text
+    assert "loadPromptHistory" in resp.text
+    assert "copyScript" in resp.text
+    assert "runWarlock" in resp.text
+
+
+def test_task_scenario_endpoint_returns_script(client):
+    test_client, manager = client
+    created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
+    task_id = created["task_id"]
+    workdir = Path(manager.config.workspaces_dir) / task_id
+    workdir.mkdir(parents=True)
+    (workdir / "scenario.txt").write_text("end_time 7200 sec\n", encoding="utf-8")
+    resp = test_client.get(f"/api/tasks/{task_id}/scenario.txt")
+    assert resp.status_code == 200
+    assert resp.text == "end_time 7200 sec\n"
+    assert resp.headers["content-type"].startswith("text/plain")
+
+
+def test_task_scenario_endpoint_missing_returns_404(client):
+    test_client, _ = client
+    created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
+    resp = test_client.get(f"/api/tasks/{created['task_id']}/scenario.txt")
+    assert resp.status_code == 404
+
+
+def test_prompt_history_endpoint_returns_persisted_prompts(client):
+    test_client, manager = client
+    created = test_client.post("/api/tasks", json={"prompt": "生成编队", "options": ["-es"]}).json()
+    test_client.post("/api/tasks", json={"script": "end_time 1 sec\n", "options": ["-es"]})
+    resp = test_client.get("/api/prompt-history")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "history": [
+            {
+                "task_id": created["task_id"],
+                "prompt": "生成编队",
+                "options": ["-es"],
+                "created_at": "2026-08-11T00:00:00",
+                "state": "pending",
+            }
+        ]
+    }
+
+
 def test_cancel_running_task(client):
     test_client, _ = client
     created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
@@ -97,6 +174,7 @@ def test_log_returns_workdir_file_list_as_degradation(client):
     resp = test_client.get(f"/api/tasks/{task_id}/log")
     assert resp.status_code == 200
     assert "scenario.txt" in resp.json()["files"]
+    assert resp.json()["scenario_text"] == "mission\n"
 
 
 def test_log_missing_task_returns_404(client):

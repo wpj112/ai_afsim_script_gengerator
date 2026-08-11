@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from core.matcher import MatchResult
+from core.script_normalizer import normalize_script
 
 _BLOCK_OPENERS = (
     "platform_type", "platform", "sensor", "weapon", "mover",
@@ -93,7 +94,9 @@ def apply_fix(script_path: Path, match: MatchResult) -> bool:
         return False
     desc = match.fix.get("description", "")
     matched = match.matched_text
-    if "基类型" in desc:
+    if _is_normalizer_fix(matched):
+        new_text = normalize_script(text)
+    elif "基类型" in desc:
         token_match = _BASE_TOKEN_RE.search(matched)
         if not token_match:
             return False
@@ -131,6 +134,11 @@ def apply_fix(script_path: Path, match: MatchResult) -> bool:
     except OSError:
         return False
     return True
+
+
+def _is_normalizer_fix(matched):
+    lowered = (matched or "").lower()
+    return "unknown command: time" in lowered or "unknown command: enable_debug" in lowered
 
 
 def _find_target_line(text, token, base_type):

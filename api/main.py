@@ -4,7 +4,8 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from api.models import TaskResponse, TaskSubmit
@@ -14,6 +15,7 @@ from core.agent import TaskRequest
 from core.config import load_config
 
 ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = ROOT / "frontend"
 
 TASK_ID_PATTERN = re.compile(r"[0-9a-fA-F]{32}")
 
@@ -21,6 +23,9 @@ TASK_ID_PATTERN = re.compile(r"[0-9a-fA-F]{32}")
 def create_app(task_manager=None):
     app = FastAPI()
     manager = task_manager or TaskManager(load_config())
+
+    if FRONTEND_DIR.exists():
+        app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
     class PromoteBody(BaseModel):
         confirm: bool = False
@@ -52,6 +57,24 @@ def create_app(task_manager=None):
             result=status.result,
         )
 
+    @app.get("/api/prompt-history")
+    def list_prompt_history(limit: int = 50):
+        if not hasattr(manager, "list_prompt_history"):
+            return {"history": []}
+        items = manager.list_prompt_history(limit)
+        return {
+            "history": [
+                {
+                    "task_id": item.task_id,
+                    "prompt": item.prompt,
+                    "options": item.options,
+                    "created_at": item.created_at,
+                    "state": item.state,
+                }
+                for item in items
+            ]
+        }
+
     @app.get("/api/tasks/{task_id}/log")
     def get_task_log(task_id: str):
         if not TASK_ID_PATTERN.fullmatch(task_id):
@@ -66,13 +89,34 @@ def create_app(task_manager=None):
         if workdir.exists():
             files = sorted(p.name for p in workdir.iterdir() if p.is_file())
             if files:
+                scenario_path = workdir / "scenario.txt"
+                scenario_text = ""
+                if scenario_path.exists() and scenario_path.is_file():
+                    scenario_text = scenario_path.read_text(encoding="utf-8", errors="replace")
                 return {
                     "task_id": task_id,
                     "files": files,
+                    "scenario_text": scenario_text,
                     "degraded": True,
                     "note": "executor 尚未落盘日志文件，返回工作目录文件列表作为降级",
                 }
         raise HTTPException(status_code=404, detail="no log files yet")
+
+    @app.get("/api/tasks/{task_id}/scenario.txt")
+    def get_task_scenario(task_id: str):
+        if not TASK_ID_PATTERN.fullmatch(task_id):
+            raise HTTPException(status_code=404, detail="task not found")
+        status = manager.get(task_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        workspaces_root = Path(manager.config.workspaces_dir).resolve()
+        scenario_path = (workspaces_root / task_id / "scenario.txt").resolve()
+        if not scenario_path.is_relative_to(workspaces_root) or not scenario_path.exists():
+            raise HTTPException(status_code=404, detail="scenario not found")
+        return PlainTextResponse(
+            scenario_path.read_text(encoding="utf-8", errors="replace"),
+            headers={"Content-Disposition": 'inline; filename="scenario.txt"'},
+        )
 
     @app.post("/api/tasks/{task_id}/cancel")
     def cancel_task(task_id: str):
@@ -122,6 +166,13 @@ def create_app(task_manager=None):
     @app.get("/healthz")
     def healthz():
         return {"status": "ok"}
+
+    @app.get("/")
+    def frontend_index():
+        index_path = FRONTEND_DIR / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="frontend not found")
+        return FileResponse(index_path)
 
     @app.exception_handler(Exception)
     def unexpected_error(request, exc):

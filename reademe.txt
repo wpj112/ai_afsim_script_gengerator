@@ -1,0 +1,246 @@
+# AFSIM 服务智能体部署说明
+
+当前目标是保持两种 AFSIM 执行方式兼容：
+
+1. Linux 服务 + Windows AFSIM Runner
+   - 适用于现在 AFSIM 只有 Windows 版的情况。
+   - Linux 上运行 afsim-gen 服务、LLM 调用、任务管理、纠错闭环。
+   - Windows 上运行一个轻量 runner，负责调用 AFSIM 自带 mission.exe。
+
+2. Linux 服务 + Linux 本地 AFSIM
+   - 适用于后续 AFSIM 移植到 Linux 后。
+   - 只需把 EXECUTOR_MODE 改为 local，并配置 AFSIM_INSTALL_DIR 或 MISSION_EXE。
+
+
+## 一、Linux 服务端部署
+
+在 Linux 服务器进入项目目录：
+
+```bash
+pip install -r requirements.txt
+```
+
+编辑 config.txt。
+
+当前使用 Windows AFSIM Runner 时：
+
+```ini
+EXECUTOR_MODE=remote
+AFSIM_RUNNER_URL=http://windows-runner-host:9001
+
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=
+LLM_MODEL=your-model
+
+WORKSPACES_DIR=workspaces
+DB_PATH=workspaces/tasks.db
+CONCURRENCY=4
+MAX_RETRIES=10
+```
+
+启动服务：
+
+```bash
+python -m api.cli serve --port 8000
+```
+
+提交任务：
+
+```bash
+python -m api.cli run --prompt "生成一个带雷达和空空导弹的空战场景"
+```
+
+或通过 HTTP：
+
+```bash
+curl -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"生成一个带雷达和空空导弹的空战场景"}'
+```
+
+
+## 一补充：Docker Compose 部署
+
+项目已提供 Dockerfile 和 docker-compose.yml。Dockerfile 基于本地镜像 `afsim:2.9.0` 构建，因此服务容器内直接包含 `/opt/afsim/bin/mission`。默认容器内服务端口是 8000，宿主机端口默认映射到 18006。
+
+复制环境变量模板：
+
+```bash
+cp .env.example .env
+```
+
+编辑 .env：
+
+```ini
+AFSIM_GEN_PORT=18006
+EXECUTOR_MODE=local
+AFSIM_INSTALL_DIR=/opt/afsim
+MISSION_EXE=/opt/afsim/bin/mission
+AFSIM_RUNNER_URL=
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_API_KEY=
+LLM_MODEL=your-model
+LLM_TIMEOUT=300
+MAX_RETRIES=10
+```
+
+启动：
+
+```bash
+docker compose up -d --build
+```
+
+健康检查：
+
+```bash
+curl http://localhost:18006/healthz
+```
+
+前端页面：
+
+```text
+http://localhost:18006/
+```
+
+提交任务：
+
+```bash
+curl -X POST http://localhost:18006/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"生成一个带雷达和空空导弹的空战场景"}'
+```
+
+compose 会挂载以下目录，保证运行状态留在宿主机：
+
+```text
+./config.txt  -> /app/config.txt
+./workspaces  -> /app/workspaces
+./memory      -> /app/memory
+./output      -> /app/output
+```
+
+如果需要临时切回 Windows Runner，可以在 .env 切成远程模式：
+
+```ini
+EXECUTOR_MODE=remote
+AFSIM_RUNNER_URL=http://<windows-ip>:9001
+```
+
+
+## 二、Windows AFSIM Runner 部署
+
+在安装了 AFSIM 的 Windows 机器上，复制本项目代码或至少复制以下文件：
+
+```text
+scripts/windows_runner.py
+scripts/start_windows_runner.bat
+requirements.txt
+```
+
+安装依赖：
+
+```powershell
+pip install -r requirements.txt
+```
+
+最简单方式：编辑 `scripts\start_windows_runner.bat` 顶部配置，然后双击启动。
+
+需要改的配置通常是：
+
+```bat
+set "AFSIM_INSTALL_DIR=D:\Program Files\afsim2.9.0"
+set "MISSION_EXE=%AFSIM_INSTALL_DIR%\bin\mission.exe"
+set "RUNNER_PORT=9001"
+set "RUNNER_WORKSPACES=D:\afsim-runner\workspaces"
+```
+
+如果 Python 不在 PATH，设置：
+
+```bat
+set "PYTHON_EXE=C:\Users\you\AppData\Local\Programs\Python\Python313\python.exe"
+```
+
+也可以用命令行启动 runner：
+
+```powershell
+python scripts\windows_runner.py `
+  --host 0.0.0.0 `
+  --port 9001 `
+  --afsim-install-dir "D:\Program Files\afsim2.9.0" `
+  --workspaces-dir "D:\afsim-runner\workspaces"
+```
+
+如果 mission.exe 不在默认位置，可以显式指定：
+
+```powershell
+python scripts\windows_runner.py `
+  --host 0.0.0.0 `
+  --port 9001 `
+  --mission-exe "D:\Program Files\afsim2.9.0\bin\mission.exe" `
+  --workspaces-dir "D:\afsim-runner\workspaces"
+```
+
+健康检查：
+
+```powershell
+curl http://localhost:9001/healthz
+```
+
+Linux 服务端的 config.txt 中配置：
+
+```ini
+EXECUTOR_MODE=remote
+AFSIM_RUNNER_URL=http://<windows-ip>:9001
+```
+
+
+## 三、后续切换到 Linux 本地 AFSIM
+
+当 AFSIM Linux 版本可用后，Linux 服务端无需改 API/agent/task_manager，只改 config.txt：
+
+```ini
+EXECUTOR_MODE=local
+AFSIM_INSTALL_DIR=/opt/afsim
+MISSION_EXE=
+AFSIM_RUNNER_URL=
+```
+
+默认会推导：
+
+```text
+/opt/afsim/bin/mission
+```
+
+如果移植后的 mission 路径不同，显式配置 MISSION_EXE：
+
+```ini
+EXECUTOR_MODE=local
+MISSION_EXE=/path/to/mission
+```
+
+
+## 四、执行链路
+
+Linux 服务端统一调用 core.executor.run()：
+
+```text
+EXECUTOR_MODE=local
+  -> 本机运行 MISSION_EXE
+
+EXECUTOR_MODE=remote
+  -> POST AFSIM_RUNNER_URL/run
+  -> Windows Runner 写入 scenario.txt
+  -> Windows Runner 调 mission.exe
+  -> 返回 rc/stdout/stderr
+```
+
+上层的生成、纠错、重试、归档逻辑不感知 AFSIM 运行在 Windows 还是 Linux。
+
+
+## 五、注意事项
+
+- Windows Runner 所在机器必须能访问 AFSIM 许可证和 mission.exe 所需运行环境。
+- Linux 服务必须能通过网络访问 Windows Runner 的端口。
+- 生产环境建议给 Windows Runner 加内网访问控制或反向代理鉴权。
+- AFSIM 脚本内尽量使用相对输出路径，例如 output/case.evt，避免写死 D:\ 或 /opt 路径。
+- workspaces、memory/hot 是运行产物，已在 .gitignore 中忽略。

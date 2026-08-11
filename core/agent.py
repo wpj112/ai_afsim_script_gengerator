@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core import executor, fixer, lessons, matcher
 from core.generator import generate
+from core.script_normalizer import normalize_script
 
 ARCHIVE_DIR = Path(__file__).resolve().parent.parent / "output" / "verified" / "scenario"
 
@@ -21,6 +22,7 @@ class TaskRequest:
 class RetryRecord:
     attempt: int
     rc: int
+    stdout: str
     stderr: str
     matched_rule: str | None
     diff: str
@@ -45,14 +47,28 @@ def run_task(request, config, llm, rules, workdir, task_id):
     for attempt in range(1, config.max_retries + 1):
         if not final_script.exists():
             if request.script:
-                final_script.write_text(request.script)
+                final_script.write_text(
+                    normalize_script(
+                        request.script,
+                        min_end_time_sec=config.default_end_time_sec,
+                        default_route_speed=config.default_route_speed,
+                    ),
+                    encoding="utf-8",
+                )
             elif request.prompt:
-                final_script.write_text(generate(llm, request.prompt, config))
+                final_script.write_text(generate(llm, request.prompt, config), encoding="utf-8")
             else:
                 return TaskResult("failed", retries, None, {"error": "no prompt or script"})
+        script_text = final_script.read_text(encoding="utf-8", errors="replace")
+        if not script_text.strip():
+            report = {"error": "generated script is empty"}
+            llm_error = getattr(llm, "last_error", "")
+            if llm_error:
+                report["llm_error"] = llm_error
+            return TaskResult("failed", retries, final_script, report)
         res = executor.run(final_script, workdir, config, request.options)
         if res.rc == 0 and "ERROR" not in res.stderr:
-            report = {"message": "mission loaded OK"}
+            report = {"message": "mission loaded OK", "script_text": script_text}
             try:
                 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
                 archived = ARCHIVE_DIR / f"{task_id}_{final_script.name}"
@@ -63,17 +79,25 @@ def run_task(request, config, llm, rules, workdir, task_id):
             return TaskResult("success", retries, final_script, report)
         matches = matcher.match_output(res.stdout, res.stderr, rules)
         if not matches:
-            lessons.pend(res.stderr, workdir / "pending", note=f"task {task_id}")
-            return TaskResult("needs_review", retries, final_script, {"unknown_error": res.stderr[:500]})
+            combined_error = (res.stderr or res.stdout or "")[:1000]
+            lessons.pend(res.stderr or res.stdout, workdir / "pending", note=f"task {task_id}")
+            return TaskResult("needs_review", retries, final_script, {"unknown_error": combined_error})
         before = final_script.read_text()
         applied = fixer.apply_fix(final_script, matches[0])
         if not applied:
             patch = llm.propose_fix(before, res.stderr, matches[0].lessons)
             if patch:
-                final_script.write_text(patch)
+                final_script.write_text(
+                    normalize_script(
+                        patch,
+                        min_end_time_sec=config.default_end_time_sec,
+                        default_route_speed=config.default_route_speed,
+                    ),
+                    encoding="utf-8",
+                )
         after = final_script.read_text()
         lessons.record(matches, date, hot_dir)
-        retries.append(RetryRecord(attempt, res.rc, res.stderr, matches[0].rule_id,
+        retries.append(RetryRecord(attempt, res.rc, res.stdout, res.stderr, matches[0].rule_id,
                                    _diff_snapshot(before, after, attempt, matches[0].rule_id)))
     return TaskResult("failed", retries, final_script, {"max_retries_exceeded": config.max_retries})
 

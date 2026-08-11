@@ -14,6 +14,15 @@ def test_chat_handles_error():
         return httpx.Response(500)
     client = LLMClient("http://x/v1", "k", "m", transport=httpx.MockTransport(handler))
     assert client.chat([{"role": "user", "content": "hi"}]) == ""
+    assert client.last_error
+
+
+def test_client_accepts_long_timeout():
+    def handler(request):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = LLMClient("http://x/v1", "k", "m", transport=httpx.MockTransport(handler), timeout=300)
+    assert client.chat([{"role": "user", "content": "hi"}]) == "ok"
 
 
 def test_chat_posts_to_chat_completions_with_tools():
@@ -28,6 +37,18 @@ def test_chat_posts_to_chat_completions_with_tools():
     assert client.chat([{"role": "user", "content": "hi"}], tools=[{"type": "function"}]) == "ok"
     assert captured["url"].endswith("/chat/completions")
     assert b'"tools":[' in captured["body"]
+
+
+def test_empty_api_key_omits_authorization_header():
+    captured = {}
+
+    def handler(request):
+        captured["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = LLMClient("http://x/v1", "", "m", transport=httpx.MockTransport(handler))
+    assert client.chat([{"role": "user", "content": "hi"}]) == "ok"
+    assert captured["auth"] is None
 
 
 def test_chat_content_none_returns_empty():
@@ -84,3 +105,5 @@ def test_generate_script_includes_knowledge_context():
     assert b"rules" in body
     assert b"make scenario" in body
     assert b".txt" in body
+    assert b"7200 sec" in body
+    assert b"450 kts" in body

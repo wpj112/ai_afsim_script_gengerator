@@ -156,3 +156,21 @@ def test_apply_fix_e008_time_unit_via_description():
     assert apply_fix(path, m) is True
     assert "end_time 30 sec" in open(path).read()
     os.unlink(path)
+
+
+def test_apply_fix_unknown_time_command_normalizes_script():
+    path = _write_tmp("time\n   duration 600 sec\nend_time\n")
+    m = MatchResult("E001", "exact", "Unknown command: time", 1,
+                    {"type": "template", "description": "未知命令。"}, [])
+    assert apply_fix(path, m) is True
+    assert open(path).read() == "end_time 7200 sec\n"
+    os.unlink(path)
+
+
+def test_apply_fix_unknown_enable_debug_normalizes_script():
+    path = _write_tmp("script_interface\n   enable_debug\nend_script_interface\n")
+    m = MatchResult("E001", "exact", "Unknown command: enable_debug", 2,
+                    {"type": "template", "description": "未知命令。"}, [])
+    assert apply_fix(path, m) is True
+    assert "   debug\n" in open(path).read()
+    os.unlink(path)

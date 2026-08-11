@@ -21,12 +21,28 @@ class TaskStatus:
     result: dict
 
 
+@dataclass
+class PromptHistoryItem:
+    task_id: str
+    prompt: str
+    options: list
+    created_at: str
+    state: str | None = None
+
+
 class TaskManager:
     def __init__(self, config=None, db_path=None, llm=None, rules=None):
         self.config = config or Config()
         self.db_path = Path(db_path or self.config.db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.llm = llm or LLMClient(self.config.llm_base_url, self.config.llm_api_key, self.config.llm_model)
+        self.llm = llm or LLMClient(
+            self.config.llm_base_url,
+            self.config.llm_api_key,
+            self.config.llm_model,
+            timeout=self.config.llm_timeout,
+            default_end_time_sec=self.config.default_end_time_sec,
+            default_route_speed=self.config.default_route_speed,
+        )
         self.rules = rules if rules is not None else self._load_default_rules()
         self._cache = {}
         self._cancel = set()
@@ -47,6 +63,10 @@ class TaskManager:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, state TEXT, created_at TEXT, updated_at TEXT, result TEXT)"
             )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS prompt_history ("
+                "task_id TEXT PRIMARY KEY, prompt TEXT NOT NULL, options TEXT NOT NULL, created_at TEXT NOT NULL)"
+            )
             conn.commit()
             conn.close()
 
@@ -58,8 +78,44 @@ class TaskManager:
         status = TaskStatus(task_id, "pending", created_at, [], {})
         self._cache[task_id] = status
         self._persist(task_id, status, created_at)
+        self._record_prompt_history(task_id, request, created_at)
         self._executor.submit(self._run, task_id, request, workdir)
         return task_id
+
+    def list_prompt_history(self, limit=50):
+        limit = max(1, min(int(limit or 50), 200))
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            rows = conn.execute(
+                "SELECT h.task_id, h.prompt, h.options, h.created_at, t.state "
+                "FROM prompt_history h LEFT JOIN tasks t ON t.task_id = h.task_id "
+                "ORDER BY h.created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            conn.close()
+        items = []
+        for task_id, prompt, options_raw, created_at, state in rows:
+            try:
+                options = json.loads(options_raw) if options_raw else []
+            except json.JSONDecodeError:
+                options = []
+            items.append(PromptHistoryItem(task_id, prompt, options, created_at, state))
+        return items
+
+    def _record_prompt_history(self, task_id, request, created_at):
+        prompt = (getattr(request, "prompt", None) or "").strip()
+        if not prompt:
+            return
+        options = json.dumps(getattr(request, "options", None) or [], ensure_ascii=False)
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute(
+                "INSERT INTO prompt_history(task_id, prompt, options, created_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(task_id) DO UPDATE SET prompt=excluded.prompt, options=excluded.options, created_at=excluded.created_at",
+                (task_id, prompt, options, created_at),
+            )
+            conn.commit()
+            conn.close()
 
     def _run(self, task_id, request, workdir):
         self._set_state(task_id, "running")

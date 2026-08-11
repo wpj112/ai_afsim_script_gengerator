@@ -27,10 +27,11 @@ def test_success_path(tmp_path, monkeypatch):
     result = run_task(TaskRequest(script=script), Config(max_retries=3), None, {}, tmp_path, "t1")
     assert result.status == "success"
     assert result.report["message"] == "mission loaded OK"
+    assert result.report["script_text"] == script + "end_time 7200 sec\n"
     archived = tmp_path / "verified" / "t1_scenario.txt"
     assert result.report["archived_to"] == str(archived)
     assert archived.exists()
-    assert archived.read_text() == script
+    assert archived.read_text() == script + "end_time 7200 sec\n"
     assert result.retries == []
     assert result.final_script == tmp_path / "scenario.txt"
     assert (tmp_path / "scenario.txt").exists()
@@ -91,6 +92,20 @@ def test_script_given_skips_generate(tmp_path, monkeypatch):
     assert result.status == "success"
 
 
+def test_user_script_is_normalized_before_mission(tmp_path, monkeypatch):
+    monkeypatch.setattr(executor, "run", lambda p, w, c, options=None: ExecutionResult(0, "", ""))
+    result = run_task(
+        TaskRequest(script="```afsim\ntime\n   duration 12 sec\nend_time\n```\n"),
+        Config(max_retries=3),
+        None,
+        {},
+        tmp_path,
+        "t5b",
+    )
+    assert result.status == "success"
+    assert (tmp_path / "scenario.txt").read_text() == "end_time 7200 sec\n"
+
+
 def test_prompt_generates_script(tmp_path, monkeypatch):
     calls = {"prompt": None}
     monkeypatch.setattr(executor, "run", lambda p, w, c, options=None: ExecutionResult(0, "", ""))
@@ -103,4 +118,61 @@ def test_prompt_generates_script(tmp_path, monkeypatch):
     result = run_task(TaskRequest(prompt="make a platform"), Config(max_retries=3), FakeLLM(), {}, tmp_path, "t6")
     assert result.status == "success"
     assert calls["prompt"] == "make a platform"
-    assert (tmp_path / "scenario.txt").read_text() == "platform_type p WSF_PLATFORM\n"
+    assert (tmp_path / "scenario.txt").read_text() == "platform_type p WSF_PLATFORM\nend_time 7200 sec\n"
+
+
+def test_empty_generated_script_fails_before_mission(tmp_path, monkeypatch):
+    calls = {"run": 0}
+
+    def fake_run(p, w, c, options=None):
+        calls["run"] += 1
+        return ExecutionResult(0, "", "")
+
+    monkeypatch.setattr(executor, "run", fake_run)
+
+    class EmptyLLM:
+        def generate_script(self, prompt, ctx):
+            return ""
+
+    result = run_task(TaskRequest(prompt="make a platform"), Config(max_retries=3), EmptyLLM(), {}, tmp_path, "t7")
+    assert result.status == "failed"
+    assert result.report == {"error": "generated script is empty"}
+    assert calls["run"] == 0
+
+
+def test_empty_user_script_fails_before_mission(tmp_path, monkeypatch):
+    calls = {"run": 0}
+
+    def fake_run(p, w, c, options=None):
+        calls["run"] += 1
+        return ExecutionResult(0, "", "")
+
+    monkeypatch.setattr(executor, "run", fake_run)
+    result = run_task(TaskRequest(script=" \n"), Config(max_retries=3), None, {}, tmp_path, "t8")
+    assert result.status == "failed"
+    assert result.report == {"error": "generated script is empty"}
+    assert calls["run"] == 0
+
+
+def test_llm_patch_is_normalized_before_retry(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_run(p, w, c, options=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ExecutionResult(1, "", "ERROR: unhandled")
+        assert p.read_text() == "end_time 7200 sec\n"
+        return ExecutionResult(0, "", "")
+
+    monkeypatch.setattr(executor, "run", fake_run)
+    monkeypatch.setattr(matcher, "match_output", lambda out, err, rules: [_match()])
+    monkeypatch.setattr(fixer, "apply_fix", lambda path, m: False)
+    result = run_task(
+        TaskRequest(script="bad\n"),
+        Config(max_retries=3),
+        _fake_llm("```afsim\ntime\n   duration 33 sec\nend_time\n```\n"),
+        {},
+        tmp_path,
+        "t9",
+    )
+    assert result.status == "success"
