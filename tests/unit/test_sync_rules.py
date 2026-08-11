@@ -7,7 +7,7 @@ FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "errors_ref_samp
 
 def test_sync_rules_parses_entries(tmp_path):
     md = tmp_path / "errors-ref.md"
-    md.write_text('''### [E001] `Unknown command: platform_type`
+    md.write_text('''### [E001] `Unknown command: platform_type` 或 `Unknown command: XXX`
 
 **根因**：缺少基类型 WSF_PLATFORM。
 
@@ -19,7 +19,7 @@ Demo: `../Afsim_demoslists/engage项目汇总.md` line 330
 ''')
     rules = sync_rules(md, tmp_path / "lesson-index.md")["rules"]
     assert rules[0]["id"] == "E001"
-    assert rules[0]["keywords"] == ["Unknown command: platform_type"]
+    assert rules[0]["keywords"] == ["Unknown command: platform_type", "Unknown command: XXX"]
     assert rules[0]["patterns"] == ["Unknown command:\\s+(\\S+)"]
     assert rules[0]["fix"]["type"] in ("template", "llm_guided")
     assert rules[0]["root_cause"]

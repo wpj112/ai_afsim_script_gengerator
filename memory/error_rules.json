@@ -3,7 +3,8 @@
     {
       "id": "E001",
       "keywords": [
-        "Unknown command: platform_type"
+        "Unknown command: platform_type",
+        "Unknown command: XXX"
       ],
       "patterns": [
         "Unknown command:\\s+(\\S+)"
@@ -35,7 +36,9 @@
     {
       "id": "E003",
       "keywords": [
-        "Mover not closed"
+        "Mover not closed",
+        "Sensor not closed",
+        "Weapon not closed"
       ],
       "patterns": [
         "Mover not\\s+(\\S+)"
@@ -51,10 +54,10 @@
     {
       "id": "E004",
       "keywords": [
-        "块嵌套不完整（缺少"
+        "end_xxx"
       ],
       "patterns": [
-        "块嵌套不完整（缺少"
+        "end_xxx"
       ],
       "root_cause": "platform_type / platform / processor 等块没有正确闭合。",
       "fix": {
@@ -83,10 +86,10 @@
     {
       "id": "E006",
       "keywords": [
-        "速度单位缺失\n\n**根因**：speed 后缺少单位。"
+        "速度单位缺失"
       ],
       "patterns": [
-        "速度单位缺失\n\n**根因**：speed\\s+(\\S+)"
+        "速度单位缺失"
       ],
       "root_cause": "speed 后缺少单位。",
       "fix": {
@@ -99,10 +102,10 @@
     {
       "id": "E007",
       "keywords": [
-        "高度单位缺失或格式错误\n\n**根因**：altitude 后缺少单位或使用了错误单位。"
+        "高度单位缺失或格式错误"
       ],
       "patterns": [
-        "高度单位缺失或格式错误\n\n**根因**：altitude\\s+(\\S+)"
+        "高度单位缺失或格式错误"
       ],
       "root_cause": "altitude 后缺少单位或使用了错误单位。",
       "fix": {
@@ -115,10 +118,10 @@
     {
       "id": "E008",
       "keywords": [
-        "时间单位缺失\n\n**根因**：end_time 等时间参数缺少单位。"
+        "时间单位缺失"
       ],
       "patterns": [
-        "时间单位缺失\n\n**根因**：end_time\\s+(\\S+)"
+        "时间单位缺失"
       ],
       "root_cause": "end_time 等时间参数缺少单位。",
       "fix": {
@@ -163,10 +166,10 @@
     {
       "id": "E011",
       "keywords": [
-        "引用的 route 不存在\n\n**根因**："
+        "引用的 route 不存在"
       ],
       "patterns": [
-        "引用的 route 不存在\\s+(\\S+)"
+        "引用的 route\\s+(\\S+)"
       ],
       "root_cause": "`assign_route` 或 platform 内 route 引用的 route 名称未定义。",
       "fix": {
@@ -179,10 +182,10 @@
     {
       "id": "E012",
       "keywords": [
-        "行尾注释\n\n**根因**：AFSIM 不支持行尾注释，注释必须在独立行。"
+        "行尾注释"
       ],
       "patterns": [
-        "行尾注释\n\n**根因**：AFSIM\\s+(\\S+)"
+        "行尾注释"
       ],
       "root_cause": "AFSIM 不支持行尾注释，注释必须在独立行。",
       "fix": {
@@ -195,10 +198,10 @@
     {
       "id": "E013",
       "keywords": [
-        "阵营名称不一致\n\n**根因**：platform_type 中的 side 和 platform 实例中的 side 不匹配。"
+        "阵营名称不一致"
       ],
       "patterns": [
-        "阵营名称不一致\n\n**根因**：platform_type 中的 side 和 platform 实例中的 side\\s+(\\S+)"
+        "阵营名称不一致"
       ],
       "root_cause": "platform_type 中的 side 和 platform 实例中的 side 不匹配。",
       "fix": {
@@ -227,10 +230,10 @@
     {
       "id": "E015",
       "keywords": [
-        "processor 中使用错误的 API\n\n**根因**：processor 脚本中调用的 API 不存在或参数错误。\n\n常见错误：\n-"
+        "processor 中使用错误的 API"
       ],
       "patterns": [
-        "processor 中使用错误的 API\n\n**根因**：processor 脚本中调用的 API 不存在或参数错误。\n\n常见错误：\\s+(\\S+)"
+        "processor 中使用错误的\\s+(\\S+)"
       ],
       "root_cause": "processor 脚本中调用的 API 不存在或参数错误。",
       "fix": {
@@ -275,7 +278,8 @@
     {
       "id": "E018",
       "keywords": [
-        "Unknown weapon: <name>"
+        "Unknown weapon: <name>",
+        "launched_platform_type"
       ],
       "patterns": [
         "Unknown weapon:\\s+(\\S+)"
@@ -291,7 +295,9 @@
     {
       "id": "E019",
       "keywords": [
-        "Unknown weapon: <name>"
+        "Unknown weapon: <name>",
+        "platform",
+        "platform_type"
       ],
       "patterns": [
         "Unknown weapon:\\s+(\\S+)"
@@ -321,6 +327,6 @@
       "lessons": []
     }
   ],
-  "generated_at": "2026-08-11T09:45:02.836307",
+  "generated_at": "2026-08-11T09:49:00.270379",
   "source": "/home/bjax/afsimStudy/generator/afsim-script-generator/memory/errors-ref.md"
 }

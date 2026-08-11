@@ -16,14 +16,16 @@ def _parse_entries(text: str) -> list[dict]:
     entries = []
     for m in re.finditer(r"### \[(E\d+)\]\s+(.+?)(?=\n### \[|\Z)", text, re.S):
         rid, body = m.group(1), m.group(2)
-        title = re.match(r"`?([^`]+)`?", body).group(1).strip()
+        header = body.splitlines()[0].strip()
+        keywords = [k.strip() for k in re.findall(r"`([^`]+)`", header)]
+        if not keywords:
+            keywords = [header.replace("`", "")]
         root = re.search(r"\*\*根因\*\*：(.+)", body)
         demo = re.search(r"Demo:\s*(.+)", body)
         entries.append({
             "id": rid,
-            "keywords": [k.strip("` ") for k in title.split("`") if k.strip(" /`")],
-            "patterns": [re.sub(r"\s+\S+$", r"\\s+(\\S+)", k.strip())
-                         for k in title.split("`") if k.strip(" /`")][:1],
+            "keywords": keywords,
+            "patterns": [re.sub(r"\s+\S+$", r"\\s+(\\S+)", keywords[0])],
             "root_cause": root.group(1).strip() if root else "",
             "fix": {"type": FIX_TYPE_MAP.get(rid, DEFAULT_FIX_TYPE),
                     "description": root.group(1).strip() if root else ""},
