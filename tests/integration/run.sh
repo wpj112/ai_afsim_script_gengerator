@@ -17,17 +17,23 @@ fi
 
 for f in tests/fixtures/broken_scenarios/*.txt; do
   echo "=== $f ==="
-  AFSIM_INSTALL_DIR="$AFSIM_INSTALL_DIR" SCRIPT_PATH="$(pwd)/$f" python - <<'PY'
+  # 导出 AFSIM_INSTALL_DIR 供 Python 侧 load_config 后覆盖派生 mission_exe
+  export AFSIM_INSTALL_DIR SCRIPT_PATH="$(pwd)/$f"
+  python - <<'PY'
 import json
 import os
 from types import SimpleNamespace
 
 from core.agent import TaskRequest, run_task
-from core.config import Config
+from core.config import load_config
 
 with open("memory/error_rules.json", encoding="utf-8") as fh:
     rules = json.load(fh)
-cfg = Config(afsim_install_dir=os.environ["AFSIM_INSTALL_DIR"])
+cfg = load_config()
+# load_config 不读 AFSIM_INSTALL_DIR 环境变量，此处覆盖并补全 mission_exe
+cfg.afsim_install_dir = os.environ["AFSIM_INSTALL_DIR"]
+if not cfg.mission_exe or not os.path.exists(cfg.mission_exe):
+    cfg.mission_exe = os.path.join(cfg.afsim_install_dir, "bin", "mission")
 fake_llm = SimpleNamespace(propose_fix=lambda script, err, hint: None)
 script_path = os.environ["SCRIPT_PATH"]
 with open(script_path, encoding="utf-8") as fh:
