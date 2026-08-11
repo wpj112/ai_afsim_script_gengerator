@@ -801,3 +801,41 @@ All reference files are located in the `references/` directory:
 ```
 
 **Remember: File extension MUST be `.txt` and ALL numbers MUST have units!**
+
+---
+
+## 服务模式（afsim-gen）
+
+本技能支持以独立服务运行：
+
+### 启动服务
+```bash
+python -m api.cli serve
+# 或 uvicorn api.main:app --port 8000
+```
+
+### CLI 命令
+- `python -m api.cli run --prompt "红方 SAM vs 蓝方战机，50min"` — 端到端生成+执行+纠错
+- `python -m api.cli run --script scenario.txt` — 只执行纠错
+- `python -m api.cli task <id>` — 查询任务
+- `python -m api.cli lessons --stats` — 教训统计
+- `python -m api.cli pending --promote <id> --yes` — 教训升格
+
+### HTTP API
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| /api/tasks | POST | 提交任务（prompt 或 script） |
+| /api/tasks/{id} | GET | 查询状态与纠错历史 |
+| /api/tasks/{id}/log | GET | 工作目录文件列表 |
+| /api/tasks/{id}/cancel | POST | 取消任务 |
+| /api/lessons | GET | 教训命中统计 |
+| /api/pending | GET | 待确认教训队列 |
+| /api/pending/{id}/promote | POST | 升格教训（需 confirm: true） |
+| /healthz | GET | 存活检查 |
+
+### 自动纠错循环
+生成 → mission.exe 执行 → error_rules.json 程序化匹配 → template 补丁或 LLM 修正 → 重跑（最多 N 次，config.txt MAX_RETRIES 配置）→ 通过后提示归档 output/verified/。
+未知错误进入 memory/pending/ 待人工确认后升格进教训库（lessons.promote）。
+
+### 配置
+config.txt 中 AFSIM_INSTALL_DIR 指向 AFSIM 安装目录（Windows 用 bin/mission.exe，Linux 用 bin/mission），LLM_BASE_URL/LLM_API_KEY/LLM_MODEL 配置 LLM 接入（支持环境变量覆盖）。

@@ -691,3 +691,51 @@ afsim-script-generator/                    # AFSIM 脚本生成器 Claude Code S
 Made with ❤️ by 冯zhangwei
 
 </div>
+
+---
+
+## 智能体服务（afsim-gen）
+
+除作为 Claude Code Skill 使用外，本仓库还提供独立运行的智能体服务：接收需求描述（prompt）或已有脚本，自动完成 **生成 → 执行 → 程序化匹配纠错 → 重跑 → 教训沉淀** 的完整闭环。
+
+### 服务架构
+
+```
+┌──────────────┐   POST /api/tasks    ┌──────────────────────────────┐
+│  客户端/CLI   │ ───────────────────▶ │         FastAPI 服务          │
+│  api.cli run │                      │  ┌────────────────────────┐  │
+└──────────────┘                      │  │      TaskManager       │  │
+        ▲                             │  │  (线程池 + SQLite 持久化)│  │
+        │ GET /api/tasks/{id}         │  └───────────┬────────────┘  │
+        └─────────────────────────────│              │ run_task       │
+                                      │              ▼                │
+                                      │  ┌────────────────────────┐  │
+                                      │  │ generate → executor    │  │
+                                      │  │ → matcher → fixer      │  │
+                                      │  │ → 重跑(MAX_RETRIES)    │  │
+                                      │  └───────────┬────────────┘  │
+                                      │              │               │
+                                      │              ▼               │
+                                      │  ┌────────────────────────┐  │
+                                      │  │ lessons / pending 教训库│  │
+                                      │  └────────────────────────┘  │
+                                      └──────────────────────────────┘
+```
+
+### 快速开始
+
+1. **配置 config.txt**：设置 `AFSIM_INSTALL_DIR` 指向 AFSIM 安装目录，`LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` 配置 LLM 接入（支持环境变量覆盖）
+2. **安装依赖**：`pip install -r requirements.txt`
+3. **启动服务**：`python -m api.cli serve`，然后通过 CLI 或 HTTP API 提交任务
+
+```bash
+python -m api.cli run --prompt "红方 SAM vs 蓝方战机，50min"
+python -m api.cli run --script scenario.txt
+python -m api.cli task <id>
+python -m api.cli lessons --stats
+python -m api.cli pending --promote <id> --yes
+```
+
+### 与 v1 afsim-skill 的关系
+
+本服务的**教训体系与成果闭环**移植自 v1 版 `afsim-skill`（基于 afsim 官方论坛与实战验证沉淀的纠错经验库）：错误输出经 `error_rules.json` 程序化匹配命中历史教训，未命中项进入 `memory/pending/` 待人工确认后升格为正式教训，持续扩充纠错覆盖。完整技能文档与 AFSIM 语法参考见 `SKILL.md` 与 `references/`。
