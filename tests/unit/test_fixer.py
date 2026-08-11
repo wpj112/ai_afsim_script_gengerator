@@ -147,3 +147,12 @@ def test_apply_fix_rollback_on_new_unclosed():
         assert apply_fix(path, m) is False
     assert open(path).read() == original
     os.unlink(path)
+
+
+def test_apply_fix_e008_time_unit_via_description():
+    path = _write_tmp("end_time 30\n")
+    m = MatchResult("E008", "exact", "时间单位缺失", 1,
+                    {"type": "template", "description": "end_time 等时间参数缺少单位。"}, [])
+    assert apply_fix(path, m) is True
+    assert "end_time 30 sec" in open(path).read()
+    os.unlink(path)

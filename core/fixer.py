@@ -105,7 +105,7 @@ def apply_fix(script_path: Path, match: MatchResult) -> bool:
         if target_line is None:
             return False
         new_text = patch_append_base_type(text, target_line, base_type)
-    elif "end_" in desc or "闭合" in desc:
+    elif ("end_" in desc or "闭合" in desc) and "单位" not in desc:
         kind_match = _BLOCK_KIND_RE.search(matched)
         if not kind_match:
             return False
