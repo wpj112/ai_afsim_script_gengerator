@@ -30,4 +30,7 @@ def match_output(stdout: str, stderr: str, rules: dict) -> list[MatchResult]:
                         results.append(MatchResult(rule["id"], "pattern", line, i,
                                                    rule.get("fix", {}), rule.get("lessons", [])))
                         break
+                else:
+                    continue
+                break
     return results
