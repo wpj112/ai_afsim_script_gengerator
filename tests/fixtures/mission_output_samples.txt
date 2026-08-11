@@ -1,0 +1,13 @@
+running scenario: /home/user/afsim/runs/demo_mission
+loading script: demo_mission.txt
+echo: begin mission setup
+platform_type MY_PLATFORM
+echo: adding radar sensor
+ERROR: Unknown command: platform_type
+ERROR: Unknown command: radar_signature
+ERROR: Mover not closed
+ERROR: Sensor not closed
+ERROR: end_xxx not allowed in this context
+ERROR: Unknown command: sensor_model
+ERROR: Unknown command: weapon_model
+mission complete with errors
