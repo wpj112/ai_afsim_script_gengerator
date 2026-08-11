@@ -15,6 +15,10 @@ def test_run_calls_mission_in_workdir(tmp_path, monkeypatch):
 
 def test_mission_missing(tmp_path):
     from core.config import Config
+    script = tmp_path / "scripts" / "x.txt"
+    script.parent.mkdir()
+    script.write_text("end_time 10 sec\n")
     cfg = Config(mission_exe="/nonexistent/mission")
-    res = run(tmp_path / "x.txt", tmp_path, cfg)
+    res = run(script, tmp_path, cfg)
     assert res.rc == 1
+    assert "mission.exe" in res.stderr
