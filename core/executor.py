@@ -22,7 +22,8 @@ def run(script_path, workdir, config, options=None):
         return ExecutionResult(rc=1, stdout="", stderr=f"Script file not found: {script_path}")
     workdir.mkdir(parents=True, exist_ok=True)
     dst = workdir / script_path.name
-    shutil.copy2(script_path, dst)
+    if script_path.resolve() != dst.resolve():
+        shutil.copy2(script_path, dst)
     if config is None:
         cfg_dict = {"mission_exe": str(dst), "afsim_install_dir": "", "documentation_dir": None}
     else:
