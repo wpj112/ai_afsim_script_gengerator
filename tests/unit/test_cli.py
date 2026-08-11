@@ -47,12 +47,22 @@ def test_run_prompt_submits_and_prints_report(monkeypatch, capsys):
     assert "mission loaded OK" in out
 
 
-def test_run_script_submits_script(monkeypatch):
+def test_run_script_submits_script(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "TaskManager", FakeManager)
-    cli.main(["run", "--script", "scenario.txt"])
+    script_path = tmp_path / "scenario.txt"
+    script_path.write_text("weapon hyphyp_missile HYPHYP_WEAPON\nend_weapon\n")
+    cli.main(["run", "--script", str(script_path)])
     manager = FakeManager.instances[-1]
-    assert manager.submitted[0].script == "scenario.txt"
+    assert manager.submitted[0].script == "weapon hyphyp_missile HYPHYP_WEAPON\nend_weapon\n"
     assert manager.submitted[0].prompt is None
+
+
+def test_run_script_missing_file_exits_2(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(cli, "TaskManager", FakeManager)
+    missing = tmp_path / "missing.txt"
+    rc = cli.main(["run", "--script", str(missing)])
+    assert rc == 2
+    assert "not found" in capsys.readouterr().out
 
 
 def test_run_without_prompt_or_script_exits_2(monkeypatch):

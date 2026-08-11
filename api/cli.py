@@ -25,7 +25,14 @@ def cmd_serve(args):
 
 def cmd_run(args):
     manager = TaskManager(load_config())
-    request = TaskRequest(prompt=args.prompt, script=args.script)
+    script = None
+    if args.script:
+        try:
+            script = Path(args.script).read_text(encoding="utf-8")
+        except OSError:
+            print(f"script file {args.script} not found")
+            return 2
+    request = TaskRequest(prompt=args.prompt, script=script)
     task_id = manager.submit(request)
     print(f"task {task_id} submitted")
     deadline = time.time() + POLL_TIMEOUT
