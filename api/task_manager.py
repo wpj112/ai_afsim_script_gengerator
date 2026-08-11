@@ -33,6 +33,7 @@ class TaskManager:
         self._state_lock = threading.Lock()
         self._db_lock = threading.Lock()
         self._init_db()
+        self._recover_stale()
         self._executor = ThreadPoolExecutor(max_workers=self.config.concurrency)
 
     def _load_default_rules(self):
@@ -62,8 +63,27 @@ class TaskManager:
 
     def _run(self, task_id, request, workdir):
         self._set_state(task_id, "running")
-        result = run_task(request, self.config, self.llm, self.rules, workdir, task_id)
+        try:
+            result = run_task(request, self.config, self.llm, self.rules, workdir, task_id)
+        except Exception as exc:
+            self._set_state(task_id, "failed", result={"error": str(exc)})
+            return
         self._set_state(task_id, result.status, retries=[asdict(r) for r in result.retries], result=result.report)
+
+    def _recover_stale(self):
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            rows = conn.execute(
+                "SELECT task_id, state, created_at, result FROM tasks WHERE state IN ('running','pending')"
+            ).fetchall()
+            conn.close()
+        for task_id, state, created_at, payload_raw in rows:
+            payload = json.loads(payload_raw) if payload_raw else {}
+            result = dict(payload.get("result") or {})
+            result["error"] = "stale task recovered after restart"
+            status = TaskStatus(task_id, "failed", created_at, payload.get("retries", []), result)
+            self._cache[task_id] = status
+            self._persist(task_id, status, created_at)
 
     def _set_state(self, task_id, state, retries=None, result=None):
         with self._state_lock:

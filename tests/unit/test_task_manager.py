@@ -92,6 +92,35 @@ def test_cancel_marks_task_cancelled(tmp_path, monkeypatch):
     assert manager.get(task_id).state == "cancelled"
 
 
+def test_run_exception_marks_task_failed(tmp_path, monkeypatch):
+    def exploding_run_task(request, config, llm, rules, workdir, task_id):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(tm, "run_task", exploding_run_task)
+    manager = tm.TaskManager(_config(tmp_path), llm=object(), rules={"rules": []})
+    task_id = manager.submit(TaskRequest(script="a\n"))
+    status = _wait_terminal(manager, task_id)
+    assert status.state == "failed"
+    assert status.result.get("error") == "disk full"
+
+
+def test_restart_recovers_stale_running_row(tmp_path):
+    config = _config(tmp_path)
+    tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conn = sqlite3.connect(config.db_path)
+    conn.execute(
+        "INSERT INTO tasks(task_id, state, created_at, updated_at, result) VALUES(?,?,?,?,?)",
+        ("stale1", "running", "2024-01-01T00:00:00", "2024-01-01T00:00:00",
+         '{"retries": [], "result": {}}'),
+    )
+    conn.commit()
+    conn.close()
+    restarted = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    recovered = restarted.get("stale1")
+    assert recovered.state == "failed"
+    assert "stale" in recovered.result.get("error", "")
+
+
 def test_restart_recovers_persisted_state(tmp_path, monkeypatch):
     config = _config(tmp_path)
 
