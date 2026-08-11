@@ -1,7 +1,11 @@
+import re
+import uuid
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from api.main import create_app
 from api.task_manager import TaskStatus
@@ -15,7 +19,7 @@ class FakeTaskManager:
         self.submitted = []
 
     def submit(self, request):
-        task_id = f"task-{len(self.submitted) + 1}"
+        task_id = uuid.uuid4().hex
         self.submitted.append(request)
         self.statuses[task_id] = TaskStatus(task_id, "pending", "2026-08-11T00:00:00", [], {})
         return task_id
@@ -42,20 +46,20 @@ def test_post_task_returns_task_id(client):
     resp = test_client.post("/api/tasks", json={"prompt": "生成编队", "options": ["-v"]})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["task_id"] == "task-1"
-    assert body["state"] == "pending"
+    assert re.fullmatch(r"[0-9a-f]{32}", body["task_id"])
     assert manager.submitted[0].prompt == "生成编队"
     assert manager.submitted[0].options == ["-v"]
 
 
 def test_get_task_returns_status(client):
     test_client, _ = client
-    test_client.post("/api/tasks", json={"script": "mission\n"})
-    resp = test_client.get("/api/tasks/task-1")
+    created = test_client.post("/api/tasks", json={"script": "mission\n"}).json()
+    resp = test_client.get(f"/api/tasks/{created['task_id']}")
     assert resp.status_code == 200
-    assert resp.json()["task_id"] == "task-1"
-    assert resp.json()["state"] == "pending"
-    assert resp.json()["created_at"] == "2026-08-11T00:00:00"
+    body = resp.json()
+    assert body["task_id"] == created["task_id"]
+    assert body["state"] == "pending"
+    assert body["created_at"] == "2026-08-11T00:00:00"
 
 
 def test_get_missing_task_returns_404(client):
@@ -72,8 +76,8 @@ def test_healthz(client):
 
 def test_cancel_running_task(client):
     test_client, _ = client
-    test_client.post("/api/tasks", json={"prompt": "x"})
-    resp = test_client.post("/api/tasks/task-1/cancel")
+    created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
+    resp = test_client.post(f"/api/tasks/{created['task_id']}/cancel")
     assert resp.status_code == 200
     assert resp.json() == {"cancelled": True}
 
@@ -85,11 +89,12 @@ def test_cancel_missing_task_returns_404(client):
 
 def test_log_returns_workdir_file_list_as_degradation(client):
     test_client, manager = client
-    workdir = Path(manager.config.workspaces_dir) / "task-1"
+    created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
+    task_id = created["task_id"]
+    workdir = Path(manager.config.workspaces_dir) / task_id
     workdir.mkdir(parents=True)
     (workdir / "scenario.txt").write_text("mission\n", encoding="utf-8")
-    test_client.post("/api/tasks", json={"prompt": "x"})
-    resp = test_client.get("/api/tasks/task-1/log")
+    resp = test_client.get(f"/api/tasks/{task_id}/log")
     assert resp.status_code == 200
     assert "scenario.txt" in resp.json()["files"]
 
@@ -101,8 +106,8 @@ def test_log_missing_task_returns_404(client):
 
 def test_log_no_files_returns_404(client):
     test_client, _ = client
-    test_client.post("/api/tasks", json={"prompt": "x"})
-    assert test_client.get("/api/tasks/task-1/log").status_code == 404
+    created = test_client.post("/api/tasks", json={"prompt": "x"}).json()
+    assert test_client.get(f"/api/tasks/{created['task_id']}/log").status_code == 404
 
 
 def test_promote_requires_confirm(client):
@@ -170,3 +175,97 @@ def test_lessons_stats_returns_rule_counts(client):
     resp = test_client.get("/api/lessons")
     assert resp.status_code == 200
     assert isinstance(resp.json(), dict)
+
+
+def test_log_invalid_task_id_returns_404(client):
+    test_client, _ = client
+    resp = test_client.get("/api/tasks/not-a-hex-task-id/log")
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "task not found"}
+
+
+def test_log_unknown_hex_task_id_returns_404(client):
+    test_client, _ = client
+    resp = test_client.get(f"/api/tasks/{'a' * 32}/log")
+    assert resp.status_code == 404
+
+
+def test_promote_rejects_dotdot_file_id(client, monkeypatch, tmp_path):
+    import api.main as main
+
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    test_client, _ = client
+    resp = test_client.post("/api/pending/%2E%2E/promote", json={"confirm": True})
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "invalid file id"}
+
+
+def test_promote_rejects_traversal_file_id(client):
+    test_client, _ = client
+    route = next(
+        r for r in test_client.app.routes
+        if getattr(r, "path", "") == "/api/pending/{file_id}/promote"
+    )
+
+    class ConfirmBody(BaseModel):
+        confirm: bool = True
+
+    with pytest.raises(HTTPException) as exc_info:
+        route.endpoint(file_id="../../core/agent.py", body=ConfirmBody())
+    assert exc_info.value.status_code == 400
+    with pytest.raises(HTTPException) as exc_info:
+        route.endpoint(file_id="../unknown", body=ConfirmBody())
+    assert exc_info.value.status_code == 400
+
+
+def test_promote_rejects_non_unknown_file_id(client):
+    test_client, _ = client
+    resp = test_client.post(
+        "/api/pending/20260811_101500_known/promote", json={"confirm": True}
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "invalid file id"}
+
+
+class BoomManager:
+    def __init__(self):
+        self.config = Config(workspaces_dir="workspaces")
+
+    def submit(self, request):
+        raise RuntimeError("boom")
+
+    def get(self, task_id):
+        raise RuntimeError("boom")
+
+    def cancel(self, task_id):
+        raise RuntimeError("boom")
+
+
+def test_manager_error_returns_500_without_traceback():
+    test_client = TestClient(
+        create_app(task_manager=BoomManager()), raise_server_exceptions=False
+    )
+    resp = test_client.get("/api/tasks/whatever")
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "internal error"}
+    assert "Traceback" not in resp.text
+
+
+def test_lessons_missing_rules_returns_500(client, monkeypatch, tmp_path):
+    import api.main as main
+
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    test_client, _ = client
+    resp = test_client.get("/api/lessons")
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "error rules unavailable"}
+
+
+def test_pending_missing_dir_returns_empty(client, monkeypatch, tmp_path):
+    import api.main as main
+
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    test_client, _ = client
+    resp = test_client.get("/api/pending")
+    assert resp.status_code == 200
+    assert resp.json() == {"pending": []}
