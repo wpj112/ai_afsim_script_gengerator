@@ -1,10 +1,16 @@
+import pytest
 from types import SimpleNamespace
 
-from core import executor, fixer, matcher
+from core import agent, executor, fixer, matcher
 from core.agent import TaskRequest, run_task
 from core.config import Config
 from core.executor import ExecutionResult
 from core.matcher import MatchResult
+
+
+@pytest.fixture(autouse=True)
+def _archive_to_tmp(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent, "ARCHIVE_DIR", tmp_path / "verified")
 
 
 def _fake_llm(propose_result=None):
@@ -17,9 +23,14 @@ def _match(rule_id="E001", matched="mover", lessons_list=("L001",)):
 
 def test_success_path(tmp_path, monkeypatch):
     monkeypatch.setattr(executor, "run", lambda p, w, c, options=None: ExecutionResult(0, "", ""))
-    result = run_task(TaskRequest(script="platform_type p WSF_PLATFORM\n"), Config(max_retries=3), None, {}, tmp_path, "t1")
+    script = "platform_type p WSF_PLATFORM\n"
+    result = run_task(TaskRequest(script=script), Config(max_retries=3), None, {}, tmp_path, "t1")
     assert result.status == "success"
-    assert result.report == {"message": "mission loaded OK"}
+    assert result.report["message"] == "mission loaded OK"
+    archived = tmp_path / "verified" / "t1_scenario.txt"
+    assert result.report["archived_to"] == str(archived)
+    assert archived.exists()
+    assert archived.read_text() == script
     assert result.retries == []
     assert result.final_script == tmp_path / "scenario.txt"
     assert (tmp_path / "scenario.txt").exists()

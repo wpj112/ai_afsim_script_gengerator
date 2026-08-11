@@ -1,10 +1,13 @@
 import difflib
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from core import executor, fixer, lessons, matcher
 from core.generator import generate
+
+ARCHIVE_DIR = Path(__file__).resolve().parent.parent / "output" / "verified" / "scenario"
 
 
 @dataclass
@@ -49,7 +52,15 @@ def run_task(request, config, llm, rules, workdir, task_id):
                 return TaskResult("failed", retries, None, {"error": "no prompt or script"})
         res = executor.run(final_script, workdir, config, request.options)
         if res.rc == 0 and "ERROR" not in res.stderr:
-            return TaskResult("success", retries, final_script, {"message": "mission loaded OK"})
+            report = {"message": "mission loaded OK"}
+            try:
+                ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+                archived = ARCHIVE_DIR / f"{task_id}_{final_script.name}"
+                shutil.copy2(final_script, archived)
+                report["archived_to"] = str(archived)
+            except OSError:
+                report["archived_to"] = None
+            return TaskResult("success", retries, final_script, report)
         matches = matcher.match_output(res.stdout, res.stderr, rules)
         if not matches:
             lessons.pend(res.stderr, workdir / "pending", note=f"task {task_id}")
