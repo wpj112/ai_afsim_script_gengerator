@@ -1,0 +1,326 @@
+{
+  "rules": [
+    {
+      "id": "E001",
+      "keywords": [
+        "Unknown command: platform_type"
+      ],
+      "patterns": [
+        "Unknown command:\\s+(\\S+)"
+      ],
+      "root_cause": "缺少基类型 `WSF_PLATFORM`。",
+      "fix": {
+        "type": "template",
+        "description": "缺少基类型 `WSF_PLATFORM`。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 330",
+      "lessons": []
+    },
+    {
+      "id": "E002",
+      "keywords": [
+        "Unknown command: radar_signature"
+      ],
+      "patterns": [
+        "Unknown command:\\s+(\\S+)"
+      ],
+      "root_cause": "缺少基类型 `WSF_RADAR_SIGNATURE`。",
+      "fix": {
+        "type": "template",
+        "description": "缺少基类型 `WSF_RADAR_SIGNATURE`。"
+      },
+      "demo": "../Afsim_demoslists/signature_demos项目汇总.md",
+      "lessons": []
+    },
+    {
+      "id": "E003",
+      "keywords": [
+        "Mover not closed"
+      ],
+      "patterns": [
+        "Mover not\\s+(\\S+)"
+      ],
+      "root_cause": "缺少对应的 `end_mover` / `end_sensor` / `end_weapon`。",
+      "fix": {
+        "type": "template",
+        "description": "缺少对应的 `end_mover` / `end_sensor` / `end_weapon`。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 334-339",
+      "lessons": []
+    },
+    {
+      "id": "E004",
+      "keywords": [
+        "块嵌套不完整（缺少"
+      ],
+      "patterns": [
+        "块嵌套不完整（缺少"
+      ],
+      "root_cause": "platform_type / platform / processor 等块没有正确闭合。",
+      "fix": {
+        "type": "template",
+        "description": "platform_type / platform / processor 等块没有正确闭合。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E005",
+      "keywords": [
+        "Invalid position format"
+      ],
+      "patterns": [
+        "Invalid position\\s+(\\S+)"
+      ],
+      "root_cause": "坐标格式不正确。AFSIM 要求 `d:m:s N/S e/w`。",
+      "fix": {
+        "type": "template",
+        "description": "坐标格式不正确。AFSIM 要求 `d:m:s N/S e/w`。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 343-350",
+      "lessons": []
+    },
+    {
+      "id": "E006",
+      "keywords": [
+        "速度单位缺失\n\n**根因**：speed 后缺少单位。"
+      ],
+      "patterns": [
+        "速度单位缺失\n\n**根因**：speed\\s+(\\S+)"
+      ],
+      "root_cause": "speed 后缺少单位。",
+      "fix": {
+        "type": "template",
+        "description": "speed 后缺少单位。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E007",
+      "keywords": [
+        "高度单位缺失或格式错误\n\n**根因**：altitude 后缺少单位或使用了错误单位。"
+      ],
+      "patterns": [
+        "高度单位缺失或格式错误\n\n**根因**：altitude\\s+(\\S+)"
+      ],
+      "root_cause": "altitude 后缺少单位或使用了错误单位。",
+      "fix": {
+        "type": "template",
+        "description": "altitude 后缺少单位或使用了错误单位。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E008",
+      "keywords": [
+        "时间单位缺失\n\n**根因**：end_time 等时间参数缺少单位。"
+      ],
+      "patterns": [
+        "时间单位缺失\n\n**根因**：end_time\\s+(\\S+)"
+      ],
+      "root_cause": "end_time 等时间参数缺少单位。",
+      "fix": {
+        "type": "template",
+        "description": "end_time 等时间参数缺少单位。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 353",
+      "lessons": []
+    },
+    {
+      "id": "E009",
+      "keywords": [
+        "Sensor not found"
+      ],
+      "patterns": [
+        "Sensor not\\s+(\\S+)"
+      ],
+      "root_cause": "引用的传感器名称未定义或拼写错误。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "引用的传感器名称未定义或拼写错误。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E010",
+      "keywords": [
+        "Weapon not found"
+      ],
+      "patterns": [
+        "Weapon not\\s+(\\S+)"
+      ],
+      "root_cause": "weapon 名称未定义或 platform_type 中未声明 weapon。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "weapon 名称未定义或 platform_type 中未声明 weapon。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E011",
+      "keywords": [
+        "引用的 route 不存在\n\n**根因**："
+      ],
+      "patterns": [
+        "引用的 route 不存在\\s+(\\S+)"
+      ],
+      "root_cause": "`assign_route` 或 platform 内 route 引用的 route 名称未定义。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "`assign_route` 或 platform 内 route 引用的 route 名称未定义。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E012",
+      "keywords": [
+        "行尾注释\n\n**根因**：AFSIM 不支持行尾注释，注释必须在独立行。"
+      ],
+      "patterns": [
+        "行尾注释\n\n**根因**：AFSIM\\s+(\\S+)"
+      ],
+      "root_cause": "AFSIM 不支持行尾注释，注释必须在独立行。",
+      "fix": {
+        "type": "template",
+        "description": "AFSIM 不支持行尾注释，注释必须在独立行。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E013",
+      "keywords": [
+        "阵营名称不一致\n\n**根因**：platform_type 中的 side 和 platform 实例中的 side 不匹配。"
+      ],
+      "patterns": [
+        "阵营名称不一致\n\n**根因**：platform_type 中的 side 和 platform 实例中的 side\\s+(\\S+)"
+      ],
+      "root_cause": "platform_type 中的 side 和 platform 实例中的 side 不匹配。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "platform_type 中的 side 和 platform 实例中的 side 不匹配。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E014",
+      "keywords": [
+        "Script syntax error"
+      ],
+      "patterns": [
+        "Script syntax\\s+(\\S+)"
+      ],
+      "root_cause": "processor 中的脚本语法错误（括号不匹配、缺少分号等）。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "processor 中的脚本语法错误（括号不匹配、缺少分号等）。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 60-100",
+      "lessons": []
+    },
+    {
+      "id": "E015",
+      "keywords": [
+        "processor 中使用错误的 API\n\n**根因**：processor 脚本中调用的 API 不存在或参数错误。\n\n常见错误：\n-"
+      ],
+      "patterns": [
+        "processor 中使用错误的 API\n\n**根因**：processor 脚本中调用的 API 不存在或参数错误。\n\n常见错误：\\s+(\\S+)"
+      ],
+      "root_cause": "processor 脚本中调用的 API 不存在或参数错误。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "processor 脚本中调用的 API 不存在或参数错误。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E016",
+      "keywords": [
+        "Unknown command: comm_network"
+      ],
+      "patterns": [
+        "Unknown command:\\s+(\\S+)"
+      ],
+      "root_cause": "`comm_network` 在不同 AFSIM 版本中语法不一致。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "`comm_network` 在不同 AFSIM 版本中语法不一致。"
+      },
+      "demo": "",
+      "lessons": []
+    },
+    {
+      "id": "E017",
+      "keywords": [
+        "Unknown weapon: <name>"
+      ],
+      "patterns": [
+        "Unknown weapon:\\s+(\\S+)"
+      ],
+      "root_cause": "weapon 实例中引用的 weapon 类型名称与实际定义的 `weapon XXX WSF_EXPLICIT_WEAPON` 名称不一致，或拼写错误（区分大小写）。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "weapon 实例中引用的 weapon 类型名称与实际定义的 `weapon XXX WSF_EXPLICIT_WEAPON` 名称不一致，或拼写错误（区分大小写）。"
+      },
+      "demo": "../Afsim_demoslists/new_guidance项目汇总.md line 1475（weapon 定义）",
+      "lessons": []
+    },
+    {
+      "id": "E018",
+      "keywords": [
+        "Unknown weapon: <name>"
+      ],
+      "patterns": [
+        "Unknown weapon:\\s+(\\S+)"
+      ],
+      "root_cause": "`weapon XXX WSF_EXPLICIT_WEAPON` 中引用了 `launched_platform_type <Y>`，但 `<Y>` 这个 `platform_type` 定义在 `weapon` **之后**（前向引用）。AFSIM 解析器在处理 weapon 时，该 platform_type 尚未注册。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "`weapon XXX WSF_EXPLICIT_WEAPON` 中引用了 `launched_platform_type <Y>`，但 `<Y>` 这个 `platform_type` 定义在 `weapon` **之后**（前向引用）。AFSIM 解析器在处理 weapon 时，该 platform_type 尚未注册。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 4317（LRSAM 先定义）vs line 4386（weapon 后定义）",
+      "lessons": []
+    },
+    {
+      "id": "E019",
+      "keywords": [
+        "Unknown weapon: <name>"
+      ],
+      "patterns": [
+        "Unknown weapon:\\s+(\\S+)"
+      ],
+      "root_cause": "weapon 的**挂载位置**错误。将 `weapon <instance> <TYPE>` 写在 `platform` 实例块内，而不是 `platform_type` 定义块内。AFSIM 中，weapon 必须在 `platform_type` 中声明，platform 实例只支持 `add weapon`（新增）或 `edit weapon`（修改继承）语法。",
+      "fix": {
+        "type": "llm_guided",
+        "description": "weapon 的**挂载位置**错误。将 `weapon <instance> <TYPE>` 写在 `platform` 实例块内，而不是 `platform_type` 定义块内。AFSIM 中，weapon 必须在 `platform_type` 中声明，platform 实例只支持 `add weapon`（新增）或 `edit weapon`（修改继承）语法。"
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md line 441-456（weapon 在 platform_type 中）；../Afsim_demoslists/iads_c2_demos项目汇总.md line 459-471（add weapon）；../Afsim_demoslists/iads_c2_demos项目汇总.md line 172-175（edit weapon）",
+      "lessons": []
+    },
+    {
+      "id": "E020",
+      "keywords": [
+        "Unable to open event_pipe/event_output/log file"
+      ],
+      "patterns": [
+        "Unable to open event_pipe/event_output/log\\s+(\\S+)"
+      ],
+      "root_cause": "",
+      "fix": {
+        "type": "llm_guided",
+        "description": ""
+      },
+      "demo": "../Afsim_demoslists/engage项目汇总.md（查看 event_output 用法）",
+      "lessons": []
+    }
+  ],
+  "generated_at": "2026-08-11T09:45:02.836307",
+  "source": "/home/bjax/afsimStudy/generator/afsim-script-generator/memory/errors-ref.md"
+}
