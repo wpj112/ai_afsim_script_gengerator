@@ -10,4 +10,13 @@ ERROR: Sensor not closed
 ERROR: end_xxx not allowed in this context
 ERROR: Unknown command: sensor_model
 ERROR: Unknown command: weapon_model
-mission complete with errors
+echo: configuring platform instances
+ERROR: Invalid position format: 30 120
+ERROR: Sensor not found: SEARCH_RADAR
+ERROR: Weapon not found: AIM-120C
+ERROR: Script syntax error in processor: unbalanced parenthesis
+echo: linking communication networks
+ERROR: Unknown command: comm_network
+ERROR: Unknown weapon: MISSILE_X
+ERROR: Unknown weapon: AIM-120C launched_platform_type missing
+mission aborted: scenario errors detected

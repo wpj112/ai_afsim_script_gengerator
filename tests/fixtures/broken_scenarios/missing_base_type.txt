@@ -1,0 +1,5 @@
+# 错误类型: E001 - platform_type 缺少基类型 WSF_PLATFORM
+# AFSIM 报错示例: ERROR: Unknown command: platform_type
+platform_type FIGHTER
+  side blue
+end_platform_type

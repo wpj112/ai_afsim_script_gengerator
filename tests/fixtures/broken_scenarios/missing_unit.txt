@@ -1,0 +1,5 @@
+# 错误类型: E006 - speed 参数缺少单位
+# 修正: speed 后追加 kts
+platform_type FIGHTER WSF_PLATFORM
+  speed 300
+end_platform_type

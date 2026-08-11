@@ -1,0 +1,6 @@
+# 错误类型: E003 - mover 块缺少 end_mover 闭合
+# AFSIM 报错示例: ERROR: Mover not closed
+include $AFSIM_DIR/include/wsf_mover_types.txt
+mover CRUISER WSF_3DOF_MOVER
+  cruise_waypoint 1 39:00:00n 116:00:00e 5000ft msl
+  cruise_speed 300kts

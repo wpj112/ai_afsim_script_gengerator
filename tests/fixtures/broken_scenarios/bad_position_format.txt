@@ -1,0 +1,8 @@
+# 错误类型: E005 - position 使用十进制坐标，缺少 d:m:s 方位后缀
+# AFSIM 报错示例: ERROR: Invalid position format: 30 120
+platform_type FIGHTER WSF_PLATFORM
+  side blue
+end_platform_type
+platform RED_FLIGHT FIGHTER
+  position 30 120
+end_platform
