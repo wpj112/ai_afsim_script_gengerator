@@ -130,3 +130,23 @@ def test_serve_port_override(monkeypatch):
     monkeypatch.setattr(cli, "uvicorn", fake_uvicorn)
     cli.main(["serve", "--port", "9000"])
     assert calls[0][1]["port"] == 9000
+
+
+def test_run_conversation_submits_turn(monkeypatch, capsys):
+    class ConvManager(FakeManager):
+        def add_turn(self, conversation_id, instruction, options=None):
+            self.turn = (conversation_id, instruction, options)
+            return self.task_id
+
+    monkeypatch.setattr(cli, "TaskManager", ConvManager)
+    cli.main(["run", "--conversation", "abc123", "--instruction", "把速度改快"])
+    manager = ConvManager.instances[-1]
+    assert manager.turn == ("abc123", "把速度改快", None)
+    assert "turn abc123 submitted as task task123" in capsys.readouterr().out
+
+
+def test_run_instruction_without_conversation_exits_2(monkeypatch):
+    monkeypatch.setattr(cli, "TaskManager", FakeManager)
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["run", "--instruction", "改"])
+    assert excinfo.value.code == 2

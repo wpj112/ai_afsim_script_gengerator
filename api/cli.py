@@ -25,16 +25,20 @@ def cmd_serve(args):
 
 def cmd_run(args):
     manager = TaskManager(load_config())
-    script = None
-    if args.script:
-        try:
-            script = Path(args.script).read_text(encoding="utf-8")
-        except OSError:
-            print(f"script file {args.script} not found")
-            return 2
-    request = TaskRequest(prompt=args.prompt, script=script)
-    task_id = manager.submit(request)
-    print(f"task {task_id} submitted")
+    if args.conversation:
+        task_id = manager.add_turn(args.conversation, args.instruction)
+        print(f"turn {args.conversation} submitted as task {task_id}")
+    else:
+        script = None
+        if args.script:
+            try:
+                script = Path(args.script).read_text(encoding="utf-8")
+            except OSError:
+                print(f"script file {args.script} not found")
+                return 2
+        request = TaskRequest(prompt=args.prompt, script=script)
+        task_id = manager.submit(request)
+        print(f"task {task_id} submitted")
     deadline = time.time() + POLL_TIMEOUT
     status = manager.get(task_id)
     while status.state not in TERMINAL_STATES and time.time() < deadline:
@@ -123,6 +127,8 @@ def build_parser():
     group = p_run.add_mutually_exclusive_group(required=True)
     group.add_argument("--prompt", help="task prompt")
     group.add_argument("--script", help="path to an existing scenario script")
+    group.add_argument("--conversation", help="conversation id to extend with a modification turn")
+    p_run.add_argument("--instruction", help="modification instruction (requires --conversation)")
 
     p_task = sub.add_parser("task", help="query task status")
     p_task.add_argument("task_id")
