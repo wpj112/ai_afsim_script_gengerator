@@ -16,6 +16,7 @@ class Config:
     llm_timeout: int = 300
     default_end_time_sec: int = 7200
     default_route_speed: str = "450 kts"
+    afsim_doc_root: str = ""
     workspaces_dir: str = "workspaces"
     db_path: str = "workspaces/tasks.db"
 
@@ -44,6 +45,7 @@ def load_config(config_path: Path = Path("config.txt")) -> Config:
         ("llm_timeout", "LLM_TIMEOUT"),
         ("default_end_time_sec", "DEFAULT_END_TIME_SEC"),
         ("default_route_speed", "DEFAULT_ROUTE_SPEED"),
+        ("afsim_doc_root", "AFSIM_DOC_ROOT"),
         ("concurrency", "CONCURRENCY"),
         ("max_retries", "MAX_RETRIES"),
     ]

@@ -41,6 +41,13 @@ _END_TIME_VALUE_RE = re.compile(
     r"^(\s*end_time\s+)([0-9]+(?:\.[0-9]+)?)(\s*)(sec|second|seconds|min|minute|minutes|hr|hour|hours)?(\s*)$",
     re.IGNORECASE,
 )
+_PLATFORM_TYPE_HEADER_RE = re.compile(r"^\s*platform_type\s+(\S+)\s+\S+\b", re.IGNORECASE)
+_PLATFORM_HEADER_RE = re.compile(r"^(\s*platform\s+)(\S+)(\s+)(\S+)(\b.*)$", re.IGNORECASE)
+_VISUAL_MARKERS = {
+    "radar": ("radar", "radar"),
+    "missile": ("missile", "missile"),
+    "aircraft": ("fighter", "aircraft"),
+}
 
 
 def normalize_script(
@@ -59,6 +66,7 @@ def normalize_script(
     lines = _close_platform_type_movers(lines)
     lines = _normalize_platform_instance_types(lines)
     lines = _prune_platform_instance_references(lines)
+    lines = _apply_platform_visual_markers(lines)
     lines = _normalize_waypoints(lines)
     lines = _normalize_route_navigation(lines, default_route_speed)
     lines = _dedupe_adjacent_route_positions(lines)
@@ -327,6 +335,172 @@ def _prune_platform_instance_references(lines):
             continue
         result.append(line)
     return result
+
+
+def _apply_platform_visual_markers(lines):
+    type_blocks = _collect_platform_type_blocks(lines)
+    if not type_blocks:
+        return lines
+
+    roles_by_type = {}
+    for line in lines:
+        match = _PLATFORM_HEADER_RE.match(line)
+        if not match:
+            continue
+        role = _infer_platform_visual_role(match.group(2), match.group(4))
+        if role and match.group(4) in type_blocks:
+            roles_by_type.setdefault(match.group(4), set()).add(role)
+    if not roles_by_type:
+        return lines
+
+    existing_names = set(type_blocks)
+    rewrites = {}
+    replacement_blocks = {}
+    for type_name, roles in roles_by_type.items():
+        block = type_blocks[type_name]["block"]
+        if len(roles) == 1:
+            role = next(iter(roles))
+            replacement_blocks[type_name] = [_with_visual_marker(block, role)]
+            rewrites[(type_name, role)] = type_name
+            continue
+        blocks = []
+        for role in sorted(roles):
+            new_type = _visual_type_name(type_name, role, existing_names)
+            existing_names.add(new_type)
+            rewrites[(type_name, role)] = new_type
+            blocks.append(_rename_platform_type_block(_with_visual_marker(block, role, force=True), new_type))
+        replacement_blocks[type_name] = blocks
+
+    result = []
+    i = 0
+    while i < len(lines):
+        type_match = _PLATFORM_TYPE_HEADER_RE.match(lines[i])
+        if type_match and type_match.group(1) in replacement_blocks:
+            original_type = type_match.group(1)
+            for block_index, block in enumerate(replacement_blocks[original_type]):
+                if block_index:
+                    result.append("")
+                result.extend(block)
+            i = type_blocks[original_type]["end"] + 1
+            continue
+
+        platform_match = _PLATFORM_HEADER_RE.match(lines[i])
+        if platform_match:
+            platform_name = platform_match.group(2)
+            platform_type = platform_match.group(4)
+            role = _infer_platform_visual_role(platform_name, platform_type)
+            new_type = rewrites.get((platform_type, role))
+            if new_type and new_type != platform_type:
+                line = "".join((
+                    platform_match.group(1),
+                    platform_name,
+                    platform_match.group(3),
+                    new_type,
+                    platform_match.group(5),
+                ))
+                result.append(line)
+                i += 1
+                continue
+
+        result.append(lines[i])
+        i += 1
+    return result
+
+
+def _collect_platform_type_blocks(lines):
+    blocks = {}
+    i = 0
+    while i < len(lines):
+        match = _PLATFORM_TYPE_HEADER_RE.match(lines[i])
+        if not match:
+            i += 1
+            continue
+        start = i
+        block = [lines[i]]
+        j = i + 1
+        while j < len(lines):
+            block.append(lines[j])
+            if re.match(r"^\s*end_platform_type\b", lines[j], re.IGNORECASE):
+                break
+            j += 1
+        blocks[match.group(1)] = {"start": start, "end": j, "block": block}
+        i = j + 1
+    return blocks
+
+
+def _infer_platform_visual_role(platform_name, platform_type):
+    text = f"{platform_name} {platform_type}".lower()
+    tokens = set(re.split(r"[^a-z0-9]+", text))
+    if "radar" in tokens or any(token.startswith("radar") or token.endswith("radar") for token in tokens):
+        return "radar"
+    if tokens & {"sam", "missile", "launcher"} or any(
+        token.startswith(("sam", "missile", "launcher")) or token.endswith("missile")
+        for token in tokens
+    ):
+        return "missile"
+    if tokens & {"fighter", "aircraft", "plane", "jet", "ucav", "uav", "bomber", "awacs"} or any(
+        token.startswith(("fighter", "aircraft", "plane", "jet", "ucav", "uav", "bomber", "awacs"))
+        for token in tokens
+    ):
+        return "aircraft"
+    return ""
+
+
+def _with_visual_marker(block, role, force=False):
+    icon, category = _VISUAL_MARKERS[role]
+    result = [block[0]]
+    seen_icon = False
+    seen_category = False
+    for line in block[1:-1]:
+        if re.match(r"^\s*icon\b", line, re.IGNORECASE):
+            seen_icon = True
+            if force:
+                result.append(f"{_line_indent(line)}icon {icon}")
+            else:
+                result.append(line)
+            continue
+        if re.match(r"^\s*category\b", line, re.IGNORECASE):
+            seen_category = True
+            if force:
+                result.append(f"{_line_indent(line)}category {category}")
+            else:
+                result.append(line)
+            continue
+        result.append(line)
+    insert_at = 1
+    indent = _child_indent(block[0])
+    if not seen_icon:
+        result.insert(insert_at, f"{indent}icon {icon}")
+        insert_at += 1
+    if not seen_category:
+        result.insert(insert_at, f"{indent}category {category}")
+    result.append(block[-1])
+    return result
+
+
+def _rename_platform_type_block(block, new_type):
+    header = re.sub(
+        r"^(\s*platform_type\s+)\S+",
+        lambda match: f"{match.group(1)}{new_type}",
+        block[0],
+        flags=re.IGNORECASE,
+    )
+    return [header, *block[1:]]
+
+
+def _visual_type_name(type_name, role, existing_names):
+    base = re.sub(r"[^A-Za-z0-9_]", "_", type_name).strip("_") or "PLATFORM"
+    role_token = {"radar": "RADAR", "missile": "MISSILE", "aircraft": "AIRCRAFT"}[role]
+    if base.upper().endswith("_PLATFORM"):
+        candidate = f"{base[:-9]}_{role_token}_PLATFORM"
+    else:
+        candidate = f"{base}_{role_token}"
+    if candidate not in existing_names:
+        return candidate
+    suffix = 2
+    while f"{candidate}_{suffix}" in existing_names:
+        suffix += 1
+    return f"{candidate}_{suffix}"
 
 
 def _normalize_route_navigation(lines, default_speed):

@@ -18,6 +18,7 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-300}
+      AFSIM_DOC_ROOT: ${AFSIM_DOC_ROOT:-/app/afsimDoc}
       MAX_RETRIES: ${MAX_RETRIES:-10}
       DEFAULT_END_TIME_SEC: ${DEFAULT_END_TIME_SEC:-7200}
       DEFAULT_ROUTE_SPEED: ${DEFAULT_ROUTE_SPEED:-450 kts}
@@ -26,6 +27,7 @@ services:
       - ./workspaces:/app/workspaces
       - ./memory:/app/memory
       - ./output:/app/output
+      - ../afsimDoc:/app/afsimDoc:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

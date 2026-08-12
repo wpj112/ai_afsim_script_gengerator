@@ -9,6 +9,7 @@ AFSIM_INSTALL_DIR=/opt/afsim
 # This is the ultimate reference for detailed information
 # Format: {AFSIM_INSTALL_DIR}/documentation/html/docs
 # DOCUMENTATION_DIR=${AFSIM_INSTALL_DIR}/documentation/html/docs
+AFSIM_DOC_ROOT=../afsimDoc
 
 # Mission Executable (derived from install dir)
 # Format: {AFSIM_INSTALL_DIR}/bin/mission.exe

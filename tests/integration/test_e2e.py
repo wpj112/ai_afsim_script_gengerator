@@ -69,8 +69,17 @@ def test_two_concurrent_script_tasks_isolated_workdirs_and_report(tmp_path):
     assert str((workspaces / id1).resolve()) != str((workspaces / id2).resolve())
     assert (workspaces / id1 / "scenario.txt").exists()
     assert (workspaces / id2 / "scenario.txt").exists()
-    assert (workspaces / id1 / "scenario.txt").read_text(encoding="utf-8") == script_a + "end_time 7200 sec\n"
-    assert (workspaces / id2 / "scenario.txt").read_text(encoding="utf-8") == script_b + "end_time 7200 sec\n"
+    expected_a = (
+        "platform_type FIGHTER WSF_PLATFORM\n"
+        "   icon fighter\n"
+        "   category aircraft\n"
+        "platform A FIGHTER\n"
+        "end_platform\n"
+        "end_time 7200 sec\n"
+    )
+    expected_b = expected_a.replace("platform A FIGHTER", "platform B FIGHTER")
+    assert (workspaces / id1 / "scenario.txt").read_text(encoding="utf-8") == expected_a
+    assert (workspaces / id2 / "scenario.txt").read_text(encoding="utf-8") == expected_b
 
 
 def test_conversation_create_modify_and_finish(tmp_path, monkeypatch):

@@ -180,26 +180,26 @@ def test_frontend_index_served(client):
     resp = test_client.get("/")
     assert resp.status_code == 200
     assert "AFSIM Agent" in resp.text
-    assert "生成脚本" in resp.text
+    assert "当前脚本" in resp.text
     assert "copyScript" in resp.text
-    assert "Warlock 配置" in resp.text
-    assert "步骤详情" in resp.text
+    assert "新建会话" in resp.text
+    assert "历史记录" in resp.text
     assert "当前执行流程" in resp.text
-    assert "Prompt 历史" in resp.text
+    assert "历史记录" in resp.text
     assert "会话" in resp.text
-    assert "convThread" in resp.text
+    assert "conversation-workspace" in resp.text
 
 
 def test_frontend_static_js_served(client):
     test_client, _ = client
     resp = test_client.get("/static/app.js")
     assert resp.status_code == 200
-    assert "submitTask" in resp.text
+    assert "submitTask" not in resp.text
     assert "renderSteps" in resp.text
     assert "renderFlow" in resp.text
-    assert "loadPromptHistory" in resp.text
+    assert "loadHistory" in resp.text
     assert "copyScript" in resp.text
-    assert "runWarlock" in resp.text
+    assert "runWarlock" not in resp.text
     assert "createConversation" in resp.text
     assert "loadConversationDetail" in resp.text
     assert "submitTurn" in resp.text

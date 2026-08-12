@@ -3,7 +3,7 @@ from core.config import load_config, Config
 
 def test_load_config_defaults(tmp_path):
     cfg_file = tmp_path / "config.txt"
-    cfg_file.write_text("AFSIM_INSTALL_DIR=/opt/afsim\nCONCURRENCY=4\nMAX_RETRIES=3\nLLM_TIMEOUT=120\nDEFAULT_END_TIME_SEC=7200\nDEFAULT_ROUTE_SPEED=500 kts\n")
+    cfg_file.write_text("AFSIM_INSTALL_DIR=/opt/afsim\nAFSIM_DOC_ROOT=/docs/afsim\nCONCURRENCY=4\nMAX_RETRIES=3\nLLM_TIMEOUT=120\nDEFAULT_END_TIME_SEC=7200\nDEFAULT_ROUTE_SPEED=500 kts\n")
     cfg = load_config(cfg_file)
     assert cfg.afsim_install_dir == "/opt/afsim"
     assert cfg.mission_exe == "/opt/afsim/bin/mission"
@@ -11,6 +11,7 @@ def test_load_config_defaults(tmp_path):
     assert cfg.llm_timeout == 120
     assert cfg.default_end_time_sec == 7200
     assert cfg.default_route_speed == "500 kts"
+    assert cfg.afsim_doc_root == "/docs/afsim"
     assert cfg.llm_model == ""
 
 def test_env_override(tmp_path, monkeypatch):

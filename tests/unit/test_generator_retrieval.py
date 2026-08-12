@@ -55,6 +55,28 @@ def test_retrieve_knowledge_truncates_long_docs(tmp_path):
     assert len(result) <= 5000
 
 
+def test_retrieve_knowledge_selects_relevant_section_beyond_old_line_limit(tmp_path):
+    refs = _make_refs(tmp_path, names=["commands_reference.md"])
+    content = "# Commands\n\n" + "filler\n" * 130 + "\n## Radar Route\n\nRADAR_UNIQUE_SYNTAX\n"
+    (refs / "commands_reference.md").write_text(content)
+    result = retrieve_knowledge("route", refs)
+    assert "RADAR_UNIQUE_SYNTAX" in result
+
+
+def test_retrieve_knowledge_uses_explicit_official_doc_root(tmp_path, monkeypatch):
+    refs_dir = tmp_path / "references"
+    refs_dir.mkdir()
+    refs = _make_refs(refs_dir)
+    source_root = tmp_path / "official" / "html" / "_sources" / "docs"
+    source_root.mkdir(parents=True)
+    (source_root / "wsf_radar_sensor.rst.txt").write_text(
+        "Radar official syntax\n\nWSF_RADAR_OFFICIAL_UNIQUE\n"
+    )
+    monkeypatch.setenv("AFSIM_DOC_ROOT", str(tmp_path / "official"))
+    result = retrieve_knowledge("radar", refs)
+    assert "WSF_RADAR_OFFICIAL_UNIQUE" in result
+
+
 class _FakeLLM:
     def __init__(self):
         self.knowledge = None
@@ -259,6 +281,46 @@ def test_normalize_script_prunes_platform_instance_reference_blocks():
     assert "side blue\n" in normalized
     assert "sensor RADAR_SENSOR" not in normalized
     assert "weapon AA_MISSILE" not in normalized
+
+
+def test_normalize_script_splits_shared_radar_and_missile_visual_types():
+    text = (
+        "platform_type RED_STATIC_PLATFORM WSF_PLATFORM\n"
+        "   mover WSF_AIR_MOVER\n"
+        "   end_mover\n"
+        "end_platform_type\n"
+        "platform red_radar1 RED_STATIC_PLATFORM\n"
+        "   side red\n"
+        "end_platform\n"
+        "platform red_sam1 RED_STATIC_PLATFORM\n"
+        "   side red\n"
+        "end_platform\n"
+    )
+    normalized = normalize_script(text)
+    assert "platform_type RED_STATIC_RADAR_PLATFORM WSF_PLATFORM\n" in normalized
+    assert "   icon radar\n" in normalized
+    assert "   category radar\n" in normalized
+    assert "platform_type RED_STATIC_MISSILE_PLATFORM WSF_PLATFORM\n" in normalized
+    assert "   icon missile\n" in normalized
+    assert "   category missile\n" in normalized
+    assert "platform red_radar1 RED_STATIC_RADAR_PLATFORM\n" in normalized
+    assert "platform red_sam1 RED_STATIC_MISSILE_PLATFORM\n" in normalized
+
+
+def test_normalize_script_adds_missing_single_role_visual_marker_once():
+    text = (
+        "platform_type BLUE_FIGHTER_PLATFORM WSF_PLATFORM\n"
+        "   icon fighter\n"
+        "   mover WSF_AIR_MOVER\n"
+        "   end_mover\n"
+        "end_platform_type\n"
+        "platform blue_fighter1 BLUE_FIGHTER_PLATFORM\n"
+        "   side blue\n"
+        "end_platform\n"
+    )
+    normalized = normalize_script(text)
+    assert normalized.count("icon fighter") == 1
+    assert "   category aircraft\n" in normalized
 
 
 def test_normalize_script_preserves_position_speed():

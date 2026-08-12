@@ -148,6 +148,208 @@ h2 {
   margin-top: 14px;
 }
 
+.conversation-panel {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.conversation-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.conversation-controls,
+.current-script-panel,
+.history-panel {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.conversation-controls {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.conversation-controls > textarea {
+  min-height: 190px;
+}
+
+.script-mode {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.script-mode input {
+  width: auto;
+}
+
+.turn-composer {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.turn-composer textarea {
+  min-height: 130px;
+}
+
+.current-script-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 520px;
+}
+
+.current-script-panel .script-output {
+  min-height: 0;
+  max-height: none;
+  height: 100%;
+}
+
+.history-panel {
+  margin-top: 14px;
+}
+
+.current-request {
+  margin: 0 0 12px;
+  border: 1px solid #e4e8ed;
+  border-radius: 6px;
+  background: #f9fafb;
+  padding: 10px;
+}
+
+.request-label {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.current-request pre {
+  max-height: 110px;
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.45 Consolas, "SFMono-Regular", monospace;
+}
+
+.conversation-head,
+.conversation-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.conversation-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.conversation-layout {
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
+}
+
+.conversation-sidebar,
+.conversation-main {
+  min-width: 0;
+}
+
+.conversation-sidebar {
+  border-right: 1px solid var(--line);
+  padding-right: 14px;
+}
+
+.create-conversation {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.create-conversation textarea,
+.conversation-composer textarea {
+  min-height: 110px;
+}
+
+.conversation-thread {
+  min-height: 210px;
+  max-height: 430px;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 2px;
+}
+
+.conversation-thread.empty {
+  align-content: center;
+  justify-content: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+.conversation-turn {
+  border: 1px solid var(--line);
+  border-left: 4px solid #aab5bf;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fbfcfd;
+}
+
+.conversation-turn.success {
+  border-left-color: var(--ok);
+}
+
+.conversation-turn.failed,
+.conversation-turn.needs_review,
+.conversation-turn.cancelled {
+  border-left-color: var(--danger);
+}
+
+.conversation-turn.running,
+.conversation-turn.pending {
+  border-left-color: var(--warn);
+}
+
+.turn-role,
+.turn-status {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.turn-role {
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.turn-status {
+  margin-top: 5px;
+}
+
+.conversation-turn button {
+  margin-top: 9px;
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.conversation-composer {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
 .submit-panel,
 .status-panel,
 .data-panel {
@@ -410,10 +612,28 @@ dd {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .conversation-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0 0 14px;
+  }
 }
 
 @media (max-width: 760px) {
   .flow {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-head {
     grid-template-columns: 1fr;
   }
 }
