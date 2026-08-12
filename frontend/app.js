@@ -2,6 +2,8 @@ const terminalStates = new Set(["success", "failed", "needs_review", "cancelled"
 let mode = "prompt";
 let currentTaskId = "";
 let pollTimer = null;
+let currentConversationId = "";
+let convPollTimer = null;
 const warlockTemplateKey = "afsim.warlock.launchTemplate";
 
 const $ = (id) => document.getElementById(id);
@@ -172,6 +174,164 @@ function switchMode(nextMode) {
     mode === "prompt"
       ? "生成一个带雷达和空空导弹的空战场景"
       : "end_time 7200 sec\n";
+}
+
+function switchPanel(next) {
+  $("promptTab").classList.toggle("active", next === "single-prompt");
+  $("scriptTab").classList.toggle("active", next === "single-script");
+  $("convTab").classList.toggle("active", next === "conversation");
+  $("taskForm").closest(".submit-panel").style.display = next === "conversation" ? "none" : "";
+  $("convPanel").style.display = next === "conversation" ? "" : "none";
+  if (next === "single-prompt") switchMode("prompt");
+  if (next === "single-script") switchMode("script");
+  if (next === "conversation") loadConversations();
+}
+
+function parseConvOptions() {
+  return $("convCreateOptions")
+    .value.split(/\s+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function createConversation() {
+  const text = $("convCreateInput").value;
+  const payload = { options: parseConvOptions() };
+  if ($("convScriptMode").checked) {
+    payload.script = text;
+  } else {
+    payload.prompt = text;
+  }
+  try {
+    const data = await api("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    currentConversationId = data.conversation_id;
+    await loadConversations();
+    await loadConversationDetail(data.conversation_id);
+    pollConversationTurn(data.task_id);
+  } catch (err) {
+    $("convThread").className = "list empty";
+    $("convThread").textContent = err.message;
+  }
+}
+
+async function loadConversations() {
+  try {
+    const data = await api("/api/conversations");
+    const items = data.conversations || [];
+    const box = $("convList");
+    if (!items.length) {
+      box.className = "list empty";
+      box.textContent = "暂无会话";
+      return;
+    }
+    box.className = "list";
+    box.innerHTML = items
+      .map((c) => {
+        const title = (c.initial_prompt || "(script)").slice(0, 60);
+        return `<button class="history-item" type="button" data-conv="${escapeHtml(c.conversation_id)}"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(c.created_at)} / ${escapeHtml(c.state)} / ${c.turn_count} 轮</span></button>`;
+      })
+      .join("");
+    box.querySelectorAll(".history-item").forEach((btn) => {
+      btn.addEventListener("click", () => loadConversationDetail(btn.dataset.conv));
+    });
+  } catch (err) {
+    $("convList").className = "list empty";
+    $("convList").textContent = err.message;
+  }
+}
+
+function renderConvThread(turns) {
+  const box = $("convThread");
+  if (!turns.length) {
+    box.className = "list empty";
+    box.textContent = "暂无轮次";
+    return;
+  }
+  box.className = "list";
+  box.innerHTML = turns
+    .map((t) => {
+      const label = t.instruction ? `第${t.round}轮: ${t.instruction}` : `第${t.round}轮: 初始脚本`;
+      const summary = t.result
+        ? t.result.message || t.result.error || t.result.unknown_error || ""
+        : "";
+      return `<button class="history-item" type="button" data-task="${escapeHtml(t.task_id)}"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(t.state || "-")} ${escapeHtml(summary)}</span></button>`;
+    })
+    .join("");
+  box.querySelectorAll(".history-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      loadTask(btn.dataset.task);
+    });
+  });
+}
+
+async function loadConversationDetail(conversationId) {
+  try {
+    const data = await api(`/api/conversations/${encodeURIComponent(conversationId)}`);
+    currentConversationId = data.conversation_id;
+    $("convState").textContent = data.state;
+    $("convState").className = `badge ${data.state}`;
+    renderConvThread(data.turns || []);
+    if (data.current_task_id) {
+      const status = await api(`/api/tasks/${data.current_task_id}`);
+      setTask(status);
+    }
+  } catch (err) {
+    $("convThread").className = "list empty";
+    $("convThread").textContent = err.message;
+  }
+}
+
+function pollConversationTurn(taskId) {
+  clearInterval(pollTimer);
+  clearInterval(convPollTimer);
+  convPollTimer = setInterval(async () => {
+    try {
+      const status = await api(`/api/tasks/${taskId}`);
+      if (terminalStates.has(status.state)) {
+        clearInterval(convPollTimer);
+        setTask(status);
+        if (currentConversationId) loadConversationDetail(currentConversationId);
+      }
+    } catch (err) {
+      clearInterval(convPollTimer);
+      notice(err.message);
+    }
+  }, 1200);
+}
+
+async function submitTurn() {
+  const instruction = $("convInstruction").value.trim();
+  if (!currentConversationId || !instruction) {
+    notice("请先创建或选择会话，并输入修改指令");
+    return;
+  }
+  try {
+    const data = await api(`/api/conversations/${encodeURIComponent(currentConversationId)}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({ instruction, options: parseConvOptions() }),
+    });
+    $("convInstruction").value = "";
+    await loadConversationDetail(currentConversationId);
+    pollConversationTurn(data.task_id);
+  } catch (err) {
+    notice(err.message);
+  }
+}
+
+async function finishConv() {
+  if (!currentConversationId) return;
+  try {
+    await api(`/api/conversations/${encodeURIComponent(currentConversationId)}/finish`, {
+      method: "POST",
+    });
+    await loadConversationDetail(currentConversationId);
+    await loadConversations();
+  } catch (err) {
+    notice(err.message);
+  }
 }
 
 function parseOptions() {
@@ -392,8 +552,13 @@ async function loadPending() {
   }
 }
 
-$("promptTab").addEventListener("click", () => switchMode("prompt"));
-$("scriptTab").addEventListener("click", () => switchMode("script"));
+$("promptTab").addEventListener("click", () => switchPanel("single-prompt"));
+$("scriptTab").addEventListener("click", () => switchPanel("single-script"));
+$("convTab").addEventListener("click", () => switchPanel("conversation"));
+$("createConv").addEventListener("click", createConversation);
+$("submitTurn").addEventListener("click", submitTurn);
+$("finishConv").addEventListener("click", finishConv);
+$("refreshConvs").addEventListener("click", loadConversations);
 $("taskForm").addEventListener("submit", submitTask);
 $("lookupTask").addEventListener("click", () => loadTask());
 $("cancelTask").addEventListener("click", cancelCurrent);

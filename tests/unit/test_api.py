@@ -186,6 +186,8 @@ def test_frontend_index_served(client):
     assert "步骤详情" in resp.text
     assert "当前执行流程" in resp.text
     assert "Prompt 历史" in resp.text
+    assert "会话" in resp.text
+    assert "convThread" in resp.text
 
 
 def test_frontend_static_js_served(client):
@@ -198,6 +200,10 @@ def test_frontend_static_js_served(client):
     assert "loadPromptHistory" in resp.text
     assert "copyScript" in resp.text
     assert "runWarlock" in resp.text
+    assert "createConversation" in resp.text
+    assert "loadConversationDetail" in resp.text
+    assert "submitTurn" in resp.text
+    assert "finishConv" in resp.text
 
 
 def test_task_scenario_endpoint_returns_script(client):

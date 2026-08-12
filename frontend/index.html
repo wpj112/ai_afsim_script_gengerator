@@ -23,6 +23,7 @@
           <div class="tabs" role="tablist" aria-label="提交类型">
             <button class="tab active" id="promptTab" type="button">Prompt</button>
             <button class="tab" id="scriptTab" type="button">Script</button>
+            <button class="tab" id="convTab" type="button">会话</button>
           </div>
 
           <form id="taskForm">
@@ -89,6 +90,38 @@
             </div>
           </div>
           <pre id="resultBox" class="output">{}</pre>
+        </div>
+      </section>
+
+      <section id="convPanel" class="workspace" style="display:none">
+        <div class="submit-panel">
+          <div class="panel-head">
+            <h2>创建会话</h2>
+            <label><input id="convScriptMode" type="checkbox" />内容为已有脚本</label>
+          </div>
+          <textarea id="convCreateInput" spellcheck="false" placeholder="输入自然语言需求，或勾选上方后粘贴已有 AFSIM 脚本"></textarea>
+          <label>
+            mission 选项
+            <input id="convCreateOptions" value="-es" />
+          </label>
+          <div class="button-row">
+            <button class="primary" id="createConv" type="button">创建会话</button>
+          </div>
+        </div>
+        <div class="status-panel">
+          <div class="panel-head">
+            <h2>会话 <span id="convState" class="badge">-</span></h2>
+            <div class="panel-actions">
+              <button id="refreshConvs" type="button">刷新列表</button>
+              <button id="finishConv" type="button">结束会话</button>
+            </div>
+          </div>
+          <div id="convList" class="list empty">暂无会话</div>
+          <div id="convThread" class="list empty">选择或创建会话</div>
+          <textarea id="convInstruction" placeholder="输入修改指令，如：把蓝军速度改成 450 节"></textarea>
+          <div class="button-row">
+            <button class="primary" id="submitTurn" type="button">提交修改</button>
+          </div>
         </div>
       </section>
 
