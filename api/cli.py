@@ -7,7 +7,13 @@ from pathlib import Path
 import uvicorn
 
 from api.main import app
-from api.task_manager import TaskManager
+from api.task_manager import (
+    ConversationFinished,
+    ConversationNotFound,
+    EmptyInstruction,
+    NoCurrentScript,
+    TaskManager,
+)
 from core import lessons
 from core.agent import TaskRequest
 from core.config import load_config
@@ -26,7 +32,20 @@ def cmd_serve(args):
 def cmd_run(args):
     manager = TaskManager(load_config())
     if args.conversation:
-        task_id = manager.add_turn(args.conversation, args.instruction)
+        try:
+            task_id = manager.add_turn(args.conversation, args.instruction)
+        except ConversationNotFound:
+            print(f"conversation {args.conversation} not found")
+            return 2
+        except ConversationFinished:
+            print("conversation already finished")
+            return 2
+        except NoCurrentScript:
+            print("conversation has no successful script yet")
+            return 2
+        except EmptyInstruction:
+            print("instruction required")
+            return 2
         print(f"turn {args.conversation} submitted as task {task_id}")
     else:
         script = None

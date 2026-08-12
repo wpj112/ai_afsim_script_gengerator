@@ -1,7 +1,7 @@
 import pytest
 
 import api.cli as cli
-from api.task_manager import TaskStatus
+from api.task_manager import EmptyInstruction, TaskStatus
 
 
 class FakeManager:
@@ -143,6 +143,17 @@ def test_run_conversation_submits_turn(monkeypatch, capsys):
     manager = ConvManager.instances[-1]
     assert manager.turn == ("abc123", "把速度改快", None)
     assert "turn abc123 submitted as task task123" in capsys.readouterr().out
+
+
+def test_run_conversation_without_instruction_exits_2(monkeypatch, capsys):
+    class NoInstructionManager(FakeManager):
+        def add_turn(self, conversation_id, instruction, options=None):
+            raise EmptyInstruction(conversation_id)
+
+    monkeypatch.setattr(cli, "TaskManager", NoInstructionManager)
+    rc = cli.main(["run", "--conversation", "abc123"])
+    assert rc == 2
+    assert "instruction required" in capsys.readouterr().out
 
 
 def test_run_instruction_without_conversation_exits_2(monkeypatch):

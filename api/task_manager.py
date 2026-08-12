@@ -172,7 +172,9 @@ class TaskManager:
         except Exception as exc:
             self._set_state(task_id, "failed", result={"error": str(exc)})
             return
-        if result.status == "success" and getattr(request, "conversation_id", None):
+        with self._state_lock:
+            cancelled = task_id in self._cancel
+        if result.status == "success" and getattr(request, "conversation_id", None) and not cancelled:
             self._update_current_task(request.conversation_id, task_id)
         self._set_state(task_id, result.status, retries=[asdict(r) for r in result.retries], result=result.report)
 
@@ -323,10 +325,25 @@ class TaskManager:
         if conversation.state == "finished":
             raise ConversationFinished(conversation_id)
         script = self._current_script(conversation)
-        next_round = max((t.round for t in conversation.turns), default=0) + 1
         request = TaskRequest(script=script, instruction=instruction, options=options, conversation_id=conversation_id)
         task_id = self.submit(request)
-        self._record_turn(conversation_id, next_round, task_id, instruction)
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            state = conn.execute(
+                "SELECT state FROM conversations WHERE conversation_id=?", (conversation_id,)
+            ).fetchone()
+            if state is not None and state[0] == "finished":
+                conn.close()
+                raise ConversationFinished(conversation_id)
+            max_round = conn.execute(
+                "SELECT MAX(round) FROM conversation_turns WHERE conversation_id=?", (conversation_id,)
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO conversation_turns(conversation_id, round, task_id, instruction) VALUES(?,?,?,?)",
+                (conversation_id, (max_round or 0) + 1, task_id, instruction),
+            )
+            conn.commit()
+            conn.close()
         return task_id
 
     def finish_conversation(self, conversation_id):

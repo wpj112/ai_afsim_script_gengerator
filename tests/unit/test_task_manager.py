@@ -291,6 +291,82 @@ def test_conversation_finish_and_errors(tmp_path, monkeypatch):
         manager.add_turn(fresh, "x")
 
 
+def test_concurrent_add_turn_rounds_are_unique(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "scenario.txt").write_text(request.script or "generated\n", encoding="utf-8")
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(script="a\n"))
+    first_task_id = manager.get_conversation(conv_id).turns[0].task_id
+    _wait_terminal(manager, first_task_id)
+
+    barrier = threading.Barrier(2)
+    original_script = tm.TaskManager._current_script
+
+    def synced_script(self, conversation):
+        barrier.wait(5)
+        return original_script(self, conversation)
+
+    monkeypatch.setattr(tm.TaskManager, "_current_script", synced_script)
+    errors = []
+
+    def do_add_turn():
+        try:
+            manager.add_turn(conv_id, "加一架")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=do_add_turn) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert all(not t.is_alive() for t in threads)
+    assert errors == []
+    conversation = manager.get_conversation(conv_id)
+    assert [t.round for t in conversation.turns] == [1, 2, 3]
+    assert len({t.task_id for t in conversation.turns}) == 3
+
+
+def test_cancel_success_conversation_turn_keeps_current_task(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+    finished_run = {"n": 0}
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "scenario.txt").write_text(request.script or "generated\n", encoding="utf-8")
+        if request.instruction:
+            started.set()
+            release.wait(10)
+        finished_run["n"] += 1
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(script="a\n"))
+    first_task_id = manager.get_conversation(conv_id).turns[0].task_id
+    _wait_terminal(manager, first_task_id)
+    assert manager.get_conversation(conv_id).current_task_id == first_task_id
+
+    turn_task_id = manager.add_turn(conv_id, "加一架")
+    assert started.wait(5)
+    assert manager.cancel(turn_task_id) is True
+    release.set()
+    deadline = time.time() + 10
+    while finished_run["n"] < 2 and time.time() < deadline:
+        time.sleep(0.01)
+    assert finished_run["n"] == 2
+    assert manager.get(turn_task_id).state == "cancelled"
+    assert manager.get_conversation(conv_id).current_task_id == first_task_id
+
+
 def test_list_conversations_returns_turn_counts(tmp_path, monkeypatch):
     config = _config(tmp_path)
 
