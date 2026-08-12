@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from core.agent import run_task
+from core.agent import TaskRequest, run_task
 from core.config import Config
 from core.llm import LLMClient
 
@@ -28,6 +28,41 @@ class PromptHistoryItem:
     options: list
     created_at: str
     state: str | None = None
+
+
+class ConversationNotFound(Exception):
+    pass
+
+
+class ConversationFinished(Exception):
+    pass
+
+
+class NoCurrentScript(Exception):
+    pass
+
+
+class EmptyInstruction(Exception):
+    pass
+
+
+@dataclass
+class ConversationTurn:
+    round: int
+    task_id: str
+    instruction: str | None
+    state: str | None = None
+    result: dict | None = None
+
+
+@dataclass
+class ConversationStatus:
+    conversation_id: str
+    created_at: str
+    initial_prompt: str | None
+    current_task_id: str | None
+    state: str
+    turns: list[ConversationTurn]
 
 
 class TaskManager:
@@ -67,6 +102,19 @@ class TaskManager:
                 "CREATE TABLE IF NOT EXISTS prompt_history ("
                 "task_id TEXT PRIMARY KEY, prompt TEXT NOT NULL, options TEXT NOT NULL, created_at TEXT NOT NULL)"
             )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS conversations ("
+                "conversation_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, initial_prompt TEXT, "
+                "current_task_id TEXT, state TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS conversation_turns ("
+                "conversation_id TEXT NOT NULL, round INTEGER NOT NULL, task_id TEXT NOT NULL, "
+                "instruction TEXT, PRIMARY KEY (conversation_id, round))"
+            )
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+            if "conversation_id" not in cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN conversation_id TEXT")
             conn.commit()
             conn.close()
 
@@ -124,6 +172,8 @@ class TaskManager:
         except Exception as exc:
             self._set_state(task_id, "failed", result={"error": str(exc)})
             return
+        if result.status == "success" and getattr(request, "conversation_id", None):
+            self._update_current_task(request.conversation_id, task_id)
         self._set_state(task_id, result.status, retries=[asdict(r) for r in result.retries], result=result.report)
 
     def _recover_stale(self):
@@ -189,3 +239,134 @@ class TaskManager:
             self._cancel.add(task_id)
         self._set_state(task_id, "cancelled")
         return True
+
+    def create_conversation(self, request):
+        conversation_id = uuid.uuid4().hex
+        created_at = datetime.now().isoformat()
+        initial_prompt = (getattr(request, "prompt", None) or "").strip() or None
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute(
+                "INSERT INTO conversations(conversation_id, created_at, initial_prompt, current_task_id, state) "
+                "VALUES(?,?,?,?,?)",
+                (conversation_id, created_at, initial_prompt, None, "active"),
+            )
+            conn.commit()
+            conn.close()
+        request.conversation_id = conversation_id
+        task_id = self.submit(request)
+        self._record_turn(conversation_id, 1, task_id, initial_prompt)
+        return conversation_id
+
+    def list_conversations(self, limit=50):
+        limit = max(1, min(int(limit or 50), 200))
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            rows = conn.execute(
+                "SELECT c.conversation_id, c.created_at, c.initial_prompt, c.current_task_id, c.state, "
+                "(SELECT COUNT(*) FROM conversation_turns t WHERE t.conversation_id = c.conversation_id) "
+                "FROM conversations c ORDER BY c.created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            conn.close()
+        return [
+            {
+                "conversation_id": r[0],
+                "created_at": r[1],
+                "initial_prompt": r[2],
+                "current_task_id": r[3],
+                "state": r[4],
+                "turn_count": r[5],
+            }
+            for r in rows
+        ]
+
+    def get_conversation(self, conversation_id):
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            row = conn.execute(
+                "SELECT conversation_id, created_at, initial_prompt, current_task_id, state "
+                "FROM conversations WHERE conversation_id=?",
+                (conversation_id,),
+            ).fetchone()
+            turn_rows = []
+            if row is not None:
+                turn_rows = conn.execute(
+                    "SELECT round, task_id, instruction FROM conversation_turns "
+                    "WHERE conversation_id=? ORDER BY round",
+                    (conversation_id,),
+                ).fetchall()
+            conn.close()
+        if row is None:
+            return None
+        turns = []
+        for t_round, t_task_id, t_instruction in turn_rows:
+            status = self.get(t_task_id)
+            turns.append(
+                ConversationTurn(
+                    round=t_round,
+                    task_id=t_task_id,
+                    instruction=t_instruction,
+                    state=status.state if status else None,
+                    result=status.result if status else None,
+                )
+            )
+        return ConversationStatus(row[0], row[1], row[2], row[3], row[4], turns)
+
+    def add_turn(self, conversation_id, instruction, options=None):
+        instruction = (instruction or "").strip()
+        if not instruction:
+            raise EmptyInstruction(conversation_id)
+        conversation = self.get_conversation(conversation_id)
+        if conversation is None:
+            raise ConversationNotFound(conversation_id)
+        if conversation.state == "finished":
+            raise ConversationFinished(conversation_id)
+        script = self._current_script(conversation)
+        next_round = max((t.round for t in conversation.turns), default=0) + 1
+        request = TaskRequest(script=script, instruction=instruction, options=options, conversation_id=conversation_id)
+        task_id = self.submit(request)
+        self._record_turn(conversation_id, next_round, task_id, instruction)
+        return task_id
+
+    def finish_conversation(self, conversation_id):
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            cur = conn.execute(
+                "UPDATE conversations SET state='finished' WHERE conversation_id=? AND state='active'",
+                (conversation_id,),
+            )
+            conn.commit()
+            conn.close()
+        return cur.rowcount > 0
+
+    def _current_script(self, conversation):
+        if not conversation.current_task_id:
+            raise NoCurrentScript(conversation.conversation_id)
+        scenario = Path(self.config.workspaces_dir) / conversation.current_task_id / "scenario.txt"
+        if scenario.exists():
+            return scenario.read_text(encoding="utf-8", errors="replace")
+        status = self.get(conversation.current_task_id)
+        if status and status.result.get("script_text"):
+            return status.result["script_text"]
+        raise NoCurrentScript(conversation.conversation_id)
+
+    def _record_turn(self, conversation_id, turn_round, task_id, instruction):
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute(
+                "INSERT INTO conversation_turns(conversation_id, round, task_id, instruction) VALUES(?,?,?,?)",
+                (conversation_id, turn_round, task_id, instruction),
+            )
+            conn.commit()
+            conn.close()
+
+    def _update_current_task(self, conversation_id, task_id):
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute(
+                "UPDATE conversations SET current_task_id=? WHERE conversation_id=?",
+                (task_id, conversation_id),
+            )
+            conn.commit()
+            conn.close()

@@ -3,6 +3,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 import api.task_manager as tm
 from core.agent import RetryRecord, TaskRequest, TaskResult
 from core.config import Config
@@ -175,3 +177,139 @@ def test_restart_recovers_persisted_state(tmp_path, monkeypatch):
     assert recovered.task_id == task_id
     assert recovered.state == "failed"
     assert recovered.result == {"max_retries_exceeded": 3}
+
+
+def test_conversation_create_first_turn_and_persist(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "scenario.txt").write_text(request.script or "generated\n", encoding="utf-8")
+        return TaskResult("success", [], None, {"message": "mission loaded OK"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(prompt="生成空战场景", options=["-es"]))
+    _wait_terminal(manager, manager.get_conversation(conv_id).turns[0].task_id)
+
+    conversation = manager.get_conversation(conv_id)
+    assert conversation is not None
+    assert conversation.state == "active"
+    assert conversation.initial_prompt == "生成空战场景"
+    assert len(conversation.turns) == 1
+    assert conversation.turns[0].round == 1
+    assert conversation.turns[0].instruction == "生成空战场景"
+    assert conversation.turns[0].state == "success"
+    assert conversation.current_task_id == conversation.turns[0].task_id
+
+    restarted = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    again = restarted.get_conversation(conv_id)
+    assert again is not None
+    assert again.current_task_id == conversation.turns[0].task_id
+    assert len(again.turns) == 1
+
+
+def test_conversation_add_turn_uses_previous_script(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    seen = {}
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        content = request.script or "end_time 7200 sec\n"
+        (Path(workdir) / "scenario.txt").write_text(content, encoding="utf-8")
+        seen[task_id] = (request.script, request.instruction)
+        return TaskResult("success", [], None, {"message": "mission loaded OK"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(script="platform A FIGHTER\n"))
+    first_task_id = manager.get_conversation(conv_id).turns[0].task_id
+    _wait_terminal(manager, first_task_id)
+
+    task_id = manager.add_turn(conv_id, "再加一架飞机")
+    _wait_terminal(manager, task_id)
+    conversation = manager.get_conversation(conv_id)
+    assert len(conversation.turns) == 2
+    assert conversation.turns[1].round == 2
+    assert conversation.turns[1].instruction == "再加一架飞机"
+    assert conversation.current_task_id == task_id
+    assert seen[task_id][0] == "platform A FIGHTER\n"
+    assert seen[task_id][1] == "再加一架飞机"
+
+
+def test_conversation_failed_turn_keeps_previous_current(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    calls = {"n": 0}
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        calls["n"] += 1
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "scenario.txt").write_text(request.script or "x\n", encoding="utf-8")
+        if calls["n"] == 1:
+            return TaskResult("success", [], None, {"message": "mission loaded OK"})
+        return TaskResult("failed", [], None, {"max_retries_exceeded": 3})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(script="a\n"))
+    first_task_id = manager.get_conversation(conv_id).turns[0].task_id
+    _wait_terminal(manager, first_task_id)
+
+    bad_task_id = manager.add_turn(conv_id, "改成失败")
+    _wait_terminal(manager, bad_task_id)
+    conversation = manager.get_conversation(conv_id)
+    assert conversation.current_task_id == first_task_id
+    assert len(conversation.turns) == 2
+    assert conversation.turns[1].state == "failed"
+
+
+def test_conversation_finish_and_errors(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_id = manager.create_conversation(TaskRequest(script="a\n"))
+    first_task_id = manager.get_conversation(conv_id).turns[0].task_id
+    _wait_terminal(manager, first_task_id)
+
+    assert manager.finish_conversation(conv_id) is True
+    assert manager.get_conversation(conv_id).state == "finished"
+    assert manager.finish_conversation(conv_id) is False
+
+    with pytest.raises(tm.ConversationNotFound):
+        manager.add_turn("nope", "x")
+    with pytest.raises(tm.ConversationFinished):
+        manager.add_turn(conv_id, "x")
+    with pytest.raises(tm.EmptyInstruction):
+        manager.add_turn(conv_id, "   ")
+    with pytest.raises(tm.NoCurrentScript):
+        fresh = manager.create_conversation(TaskRequest(script="a\n"))
+        manager.add_turn(fresh, "x")
+
+
+def test_list_conversations_returns_turn_counts(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+
+    def fake_run_task(request, config, llm, rules, workdir, task_id):
+        Path(workdir).mkdir(parents=True, exist_ok=True)
+        (Path(workdir) / "scenario.txt").write_text(request.script or "generated\n", encoding="utf-8")
+        return TaskResult("success", [], None, {"message": "ok"})
+
+    monkeypatch.setattr(tm, "run_task", fake_run_task)
+    manager = tm.TaskManager(config, llm=object(), rules={"rules": []})
+    conv_a = manager.create_conversation(TaskRequest(prompt="场景A"))
+    conv_b = manager.create_conversation(TaskRequest(prompt="场景B"))
+    _wait_terminal(manager, manager.get_conversation(conv_a).turns[0].task_id)
+    _wait_terminal(manager, manager.get_conversation(conv_b).turns[0].task_id)
+    manager.add_turn(conv_a, "改一下")
+
+    items = manager.list_conversations()
+    by_id = {i["conversation_id"]: i for i in items}
+    assert by_id[conv_a]["turn_count"] == 2
+    assert by_id[conv_b]["turn_count"] == 1
+    assert by_id[conv_a]["state"] == "active"
+    assert by_id[conv_a]["initial_prompt"] == "场景A"
