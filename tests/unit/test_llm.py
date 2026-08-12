@@ -107,3 +107,19 @@ def test_generate_script_includes_knowledge_context():
     assert b".txt" in body
     assert b"7200 sec" in body
     assert b"450 kts" in body
+
+
+def test_modify_script_message_structure():
+    captured = {}
+
+    def handler(request):
+        captured["body"] = request.read()
+        return httpx.Response(200, json={"choices": [{"message": {"content": "modified"}}]})
+
+    client = LLMClient("http://x/v1", "k", "m", transport=httpx.MockTransport(handler))
+    assert client.modify_script("platform A FIGHTER\n", "把速度改成450节", "rules") == "modified"
+    body = captured["body"]
+    assert b"platform A FIGHTER" in body
+    assert b"\xe6\x8a\x8a\xe9\x80\x9f\xe5\xba\xa6\xe6\x94\xb9\xe6\x88\x90450\xe8\x8a\x82" in body
+    assert b"rules" in body
+    assert b"7200 sec" in body

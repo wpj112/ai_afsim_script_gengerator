@@ -43,8 +43,8 @@ class LLMClient:
             self.last_error = str(exc)
             return ""
 
-    def generate_script(self, prompt, knowledge_context):
-        system = (
+    def _build_system_prompt(self, knowledge_context):
+        return (
             "你是 AFSIM 脚本生成专家。严格遵循以下规则："
             "只输出完整 AFSIM 脚本正文，不要输出 Markdown 代码围栏、解释、推理过程或空内容；"
             "必须使用 AFSIM/WSF 文本块语法：块以关键字开头，以 end_关键字结束；"
@@ -60,6 +60,8 @@ class LLMClient:
             "`antenna_pattern` 内必须写 `constant_pattern ... end_constant_pattern`，增益写 `peak_gain`，不要写裸 `gain` 或 `beamwidth`；"
             "默认优先生成可加载骨架：`platform_type` 内只写 `mover WSF_AIR_MOVER ... end_mover`；不要用 `sensor NAME`、`weapon NAME`、`processor NAME` 这种外部引用行；"
             "`platform` 实例内也不要用 `sensor NAME/end_sensor` 或 `weapon NAME/end_weapon` 这种挂载块；先只写 side 和 route；"
+            "Warlock 可视化标识写在 `platform_type` 中：雷达平台使用 `icon radar` 和 `category radar`；SAM/导弹平台使用 `icon missile` 和 `category missile`；战斗机/飞机平台使用 `icon fighter` 和 `category aircraft`；"
+            "雷达平台和 SAM/导弹平台不能共用同一个 `platform_type`，否则 Warlock 会显示成同一种图标；"
             "优先生成最小可运行场景；不确定的传感器、武器、通信、气动参数直接省略，不要编造命令；"
             "1) 脚本文件必须以 .txt 扩展名保存；"
             "2) 速度、时间、高度、距离等参数必须带单位（如 kts、sec、ft msl）；"
@@ -68,11 +70,24 @@ class LLMClient:
             "5) 至少包含 end_time，且脚本不能为空。"
             "以下是与本次生成相关的知识上下文：\n" + knowledge_context
         )
+
+    def generate_script(self, prompt, knowledge_context):
         messages = [
-            {"role": "system", "content": system},
+            {"role": "system", "content": self._build_system_prompt(knowledge_context)},
             {"role": "user", "content": prompt},
         ]
         return self.chat(messages)
+
+    def modify_script(self, script, instruction, knowledge_context):
+        user = (
+            f"这是当前 AFSIM 脚本：\n{script}\n\n"
+            f"请根据以下修改要求，输出修改后的完整 AFSIM 脚本。"
+            f"仅输出修改后的完整脚本正文，保持原有结构与有效参数：\n{instruction}"
+        )
+        return self.chat([
+            {"role": "system", "content": self._build_system_prompt(knowledge_context)},
+            {"role": "user", "content": user},
+        ])
 
     def propose_fix(self, script, error_report, lesson_hint):
         system = (
