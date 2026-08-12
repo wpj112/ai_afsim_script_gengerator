@@ -68,6 +68,54 @@ def test_template_fix_then_success(tmp_path, monkeypatch):
     assert result.retries[0].diff
 
 
+def test_instruction_uses_modify_script_not_generate(tmp_path, monkeypatch):
+    calls = {"modify": None, "generate": 0}
+    monkeypatch.setattr(executor, "run", lambda p, w, c, options=None: ExecutionResult(0, "", ""))
+
+    class ModifyLLM:
+        def generate_script(self, prompt, ctx):
+            calls["generate"] += 1
+            raise AssertionError("generate_script must not be called")
+
+        def modify_script(self, script, instruction, ctx):
+            calls["modify"] = (script, instruction)
+            return "platform A FIGHTER\n"
+
+    result = run_task(
+        TaskRequest(script="platform B FIGHTER\n", instruction="把 A 改成 B"),
+        Config(max_retries=3),
+        ModifyLLM(),
+        {},
+        tmp_path,
+        "t10",
+    )
+    assert result.status == "success"
+    assert calls["generate"] == 0
+    assert calls["modify"] == ("platform B FIGHTER\n", "把 A 改成 B")
+    assert (tmp_path / "scenario.txt").read_text() == "platform A FIGHTER\nend_time 7200 sec\n"
+
+
+def test_instruction_without_script_fails(tmp_path, monkeypatch):
+    calls = {"run": 0}
+
+    def fake_run(p, w, c, options=None):
+        calls["run"] += 1
+        return ExecutionResult(0, "", "")
+
+    monkeypatch.setattr(executor, "run", fake_run)
+    result = run_task(
+        TaskRequest(instruction="改成红方"),
+        Config(max_retries=3),
+        SimpleNamespace(modify_script=lambda s, i, c: "x\n"),
+        {},
+        tmp_path,
+        "t11",
+    )
+    assert result.status == "failed"
+    assert result.report == {"error": "no script for instruction"}
+    assert calls["run"] == 0
+
+
 def test_max_retries_exceeded(tmp_path, monkeypatch):
     config = Config(max_retries=3)
     monkeypatch.setattr(executor, "run", lambda p, w, c, options=None: ExecutionResult(1, "", "ERROR: bad"))

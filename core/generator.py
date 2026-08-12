@@ -47,3 +47,15 @@ def generate(llm, prompt, config):
         min_end_time_sec=min_end_time_sec,
         default_route_speed=default_route_speed,
     )
+
+
+def modify(llm, script, instruction, config):
+    refs_dir = Path(__file__).resolve().parent.parent / "references"
+    knowledge_context = retrieve_knowledge(instruction, refs_dir)
+    min_end_time_sec = getattr(config, "default_end_time_sec", 7200) if config is not None else 7200
+    default_route_speed = getattr(config, "default_route_speed", "450 kts") if config is not None else "450 kts"
+    return normalize_script(
+        llm.modify_script(script, instruction, knowledge_context),
+        min_end_time_sec=min_end_time_sec,
+        default_route_speed=default_route_speed,
+    )

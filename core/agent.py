@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import executor, fixer, lessons, matcher
-from core.generator import generate
+from core.generator import generate, modify
 from core.script_normalizer import normalize_script
 
 ARCHIVE_DIR = Path(__file__).resolve().parent.parent / "output" / "verified" / "scenario"
@@ -16,6 +16,8 @@ class TaskRequest:
     prompt: str | None = None
     script: str | None = None
     options: list[str] | None = None
+    instruction: str | None = None
+    conversation_id: str | None = None
 
 
 @dataclass
@@ -46,7 +48,14 @@ def run_task(request, config, llm, rules, workdir, task_id):
     hot_dir.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, config.max_retries + 1):
         if not final_script.exists():
-            if request.script:
+            if request.instruction:
+                if not request.script:
+                    return TaskResult("failed", retries, None, {"error": "no script for instruction"})
+                final_script.write_text(
+                    modify(llm, request.script, request.instruction, config),
+                    encoding="utf-8",
+                )
+            elif request.script:
                 final_script.write_text(
                     normalize_script(
                         request.script,
