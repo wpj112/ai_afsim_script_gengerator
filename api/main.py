@@ -8,8 +8,14 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from api.models import TaskResponse, TaskSubmit
-from api.task_manager import TaskManager
+from api.models import ConversationCreate, ConversationTurnSubmit, TaskResponse, TaskSubmit
+from api.task_manager import (
+    ConversationFinished,
+    ConversationNotFound,
+    EmptyInstruction,
+    NoCurrentScript,
+    TaskManager,
+)
 from core import lessons
 from core.agent import TaskRequest
 from core.config import load_config
@@ -123,6 +129,67 @@ def create_app(task_manager=None):
         if manager.cancel(task_id):
             return {"cancelled": True}
         raise HTTPException(status_code=404, detail="task not found or already terminal")
+
+    @app.post("/api/conversations")
+    def create_conversation(body: ConversationCreate):
+        conversation_id = manager.create_conversation(
+            TaskRequest(prompt=body.prompt, script=body.script, options=body.options)
+        )
+        conversation = manager.get_conversation(conversation_id)
+        return {
+            "conversation_id": conversation_id,
+            "state": conversation.state,
+            "task_id": conversation.turns[0].task_id,
+        }
+
+    @app.get("/api/conversations")
+    def list_conversations(limit: int = 50):
+        if not hasattr(manager, "list_conversations"):
+            return {"conversations": []}
+        return {"conversations": manager.list_conversations(limit)}
+
+    @app.get("/api/conversations/{conversation_id}")
+    def get_conversation(conversation_id: str):
+        conversation = manager.get_conversation(conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        return {
+            "conversation_id": conversation.conversation_id,
+            "created_at": conversation.created_at,
+            "initial_prompt": conversation.initial_prompt,
+            "current_task_id": conversation.current_task_id,
+            "state": conversation.state,
+            "turns": [
+                {
+                    "round": t.round,
+                    "task_id": t.task_id,
+                    "instruction": t.instruction,
+                    "state": t.state,
+                    "result": t.result or {},
+                }
+                for t in conversation.turns
+            ],
+        }
+
+    @app.post("/api/conversations/{conversation_id}/tasks")
+    def submit_conversation_turn(conversation_id: str, body: ConversationTurnSubmit):
+        try:
+            task_id = manager.add_turn(conversation_id, body.instruction, body.options)
+        except ConversationNotFound:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        except ConversationFinished:
+            raise HTTPException(status_code=409, detail="conversation already finished")
+        except NoCurrentScript:
+            raise HTTPException(status_code=409, detail="conversation has no successful script yet")
+        except EmptyInstruction:
+            raise HTTPException(status_code=400, detail="instruction required")
+        return {"task_id": task_id}
+
+    @app.post("/api/conversations/{conversation_id}/finish")
+    def finish_conversation(conversation_id: str):
+        if manager.finish_conversation(conversation_id):
+            return {"finished": True}
+        raise HTTPException(status_code=404, detail="conversation not found or already finished")
 
     @app.get("/api/lessons")
     def lesson_stats():

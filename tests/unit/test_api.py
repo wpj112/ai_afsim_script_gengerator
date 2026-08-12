@@ -1,6 +1,7 @@
 import re
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -8,7 +9,14 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from api.main import create_app
-from api.task_manager import PromptHistoryItem, TaskStatus
+from api.task_manager import (
+    ConversationFinished,
+    ConversationNotFound,
+    EmptyInstruction,
+    NoCurrentScript,
+    PromptHistoryItem,
+    TaskStatus,
+)
 from core.config import Config
 
 
@@ -17,6 +25,7 @@ class FakeTaskManager:
         self.config = config or Config(workspaces_dir="workspaces")
         self.statuses = {}
         self.submitted = []
+        self.conversations = {}
 
     def submit(self, request):
         task_id = uuid.uuid4().hex
@@ -46,6 +55,85 @@ class FakeTaskManager:
             for task_id, req in zip(self.statuses, self.submitted)
             if req.prompt
         ][:limit]
+
+    def create_conversation(self, request):
+        conversation_id = uuid.uuid4().hex
+        self.conversations[conversation_id] = {
+            "created_at": "2026-08-12T00:00:00",
+            "initial_prompt": request.prompt or None,
+            "current_task_id": None,
+            "state": "active",
+            "turns": [],
+        }
+        task_id = self.submit(request)
+        self.conversations[conversation_id]["turns"].append(
+            {
+                "round": 1,
+                "task_id": task_id,
+                "instruction": request.prompt or None,
+                "state": "pending",
+                "result": {},
+            }
+        )
+        return conversation_id
+
+    def list_conversations(self, limit=50):
+        return [
+            {
+                "conversation_id": cid,
+                "created_at": c["created_at"],
+                "initial_prompt": c["initial_prompt"],
+                "current_task_id": c["current_task_id"],
+                "state": c["state"],
+                "turn_count": len(c["turns"]),
+            }
+            for cid, c in self.conversations.items()
+        ][:limit]
+
+    def get_conversation(self, conversation_id):
+        c = self.conversations.get(conversation_id)
+        if c is None:
+            return None
+        return SimpleNamespace(
+            conversation_id=conversation_id,
+            created_at=c["created_at"],
+            initial_prompt=c["initial_prompt"],
+            current_task_id=c["current_task_id"],
+            state=c["state"],
+            turns=[SimpleNamespace(**t) for t in c["turns"]],
+        )
+
+    def add_turn(self, conversation_id, instruction, options=None):
+        c = self.conversations.get(conversation_id)
+        if c is None:
+            raise ConversationNotFound(conversation_id)
+        if c["state"] == "finished":
+            raise ConversationFinished(conversation_id)
+        if not (instruction or "").strip():
+            raise EmptyInstruction(conversation_id)
+        if not c["current_task_id"]:
+            raise NoCurrentScript(conversation_id)
+        task_id = self.submit(SimpleNamespace(
+            prompt=None, script="cur", options=options, instruction=instruction
+        ))
+        c["turns"].append(
+            {
+                "round": len(c["turns"]) + 1,
+                "task_id": task_id,
+                "instruction": instruction,
+                "state": "pending",
+                "result": {},
+            }
+        )
+        c["current_task_id"] = task_id
+        return task_id
+
+    def finish_conversation(self, conversation_id):
+        c = self.conversations.get(conversation_id)
+        if c is None or c["state"] == "finished":
+            return False
+        c["state"] = "finished"
+        return True
 
 
 @pytest.fixture
@@ -347,3 +435,91 @@ def test_pending_missing_dir_returns_empty(client, monkeypatch, tmp_path):
     resp = test_client.get("/api/pending")
     assert resp.status_code == 200
     assert resp.json() == {"pending": []}
+
+
+def test_create_conversation_returns_conversation_and_first_task(client):
+    test_client, manager = client
+    resp = test_client.post("/api/conversations", json={"prompt": "生成空战场景", "options": ["-es"]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert re.fullmatch(r"[0-9a-f]{32}", body["conversation_id"])
+    assert re.fullmatch(r"[0-9a-f]{32}", body["task_id"])
+    assert body["state"] == "active"
+
+
+def test_list_conversations_empty(client):
+    test_client, _ = client
+    resp = test_client.get("/api/conversations")
+    assert resp.status_code == 200
+    assert resp.json() == {"conversations": []}
+
+
+def test_get_conversation_detail(client):
+    test_client, _ = client
+    created = test_client.post("/api/conversations", json={"prompt": "x"}).json()
+    conv_id = created["conversation_id"]
+    resp = test_client.get(f"/api/conversations/{conv_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["conversation_id"] == conv_id
+    assert body["state"] == "active"
+    assert len(body["turns"]) == 1
+    assert body["turns"][0]["task_id"] == created["task_id"]
+    assert body["turns"][0]["instruction"] == "x"
+    assert body["turns"][0]["state"] == "pending"
+
+
+def test_get_conversation_missing_404(client):
+    test_client, _ = client
+    assert test_client.get("/api/conversations/nope").status_code == 404
+
+
+def test_submit_conversation_turn(client):
+    test_client, manager = client
+    created = test_client.post("/api/conversations", json={"script": "end_time 1 sec\n"}).json()
+    conv_id = created["conversation_id"]
+    manager.conversations[conv_id]["current_task_id"] = "firsttask"
+    resp = test_client.post(f"/api/conversations/{conv_id}/tasks", json={"instruction": "把速度改快"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert re.fullmatch(r"[0-9a-f]{32}", body["task_id"])
+    detail = test_client.get(f"/api/conversations/{conv_id}").json()
+    assert len(detail["turns"]) == 2
+    assert detail["turns"][1]["instruction"] == "把速度改快"
+
+
+def test_submit_turn_missing_conversation_404(client):
+    test_client, _ = client
+    resp = test_client.post("/api/conversations/nope/tasks", json={"instruction": "x"})
+    assert resp.status_code == 404
+
+
+def test_submit_turn_empty_instruction_400(client):
+    test_client, manager = client
+    created = test_client.post("/api/conversations", json={"script": "x\n"}).json()
+    conv_id = created["conversation_id"]
+    manager.get_conversation(conv_id).current_task_id = "t1"
+    resp = test_client.post(f"/api/conversations/{conv_id}/tasks", json={"instruction": "  "})
+    assert resp.status_code == 400
+
+
+def test_submit_turn_no_script_409(client):
+    test_client, _ = client
+    created = test_client.post("/api/conversations", json={"prompt": "x"}).json()
+    conv_id = created["conversation_id"]
+    resp = test_client.post(f"/api/conversations/{conv_id}/tasks", json={"instruction": "改"})
+    assert resp.status_code == 409
+
+
+def test_finish_conversation(client):
+    test_client, _ = client
+    created = test_client.post("/api/conversations", json={"prompt": "x"}).json()
+    conv_id = created["conversation_id"]
+    assert test_client.post(f"/api/conversations/{conv_id}/finish").json() == {"finished": True}
+    resp = test_client.post(f"/api/conversations/{conv_id}/tasks", json={"instruction": "改"})
+    assert resp.status_code == 409
+
+
+def test_finish_missing_conversation_404(client):
+    test_client, _ = client
+    assert test_client.post("/api/conversations/nope/finish").status_code == 404
